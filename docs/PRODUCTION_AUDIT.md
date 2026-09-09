@@ -3,7 +3,7 @@
 **Date:** 2026-09-09  
 **Scope:** Current monorepo (`apps/web`, `apps/api`, `apps/agent`, migrations, Compose, auth, metrics, alerts, CI, docs).  
 **Method:** Code and config inspection only (no stack rewrite).  
-**Goal status:** ACTIVE — this audit is Phase 1 evidence for hardening toward production readiness.
+**Goal status:** COMPLETE (readiness finalized 2026-09-09) — this audit remains Phase 1 evidence; see [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md).
 
 Severity scale: **P0** ship-blocker / active exploit or data lie · **P1** high risk before shared/prod use · **P2** material gap · **P3** polish / scale · **P4** nice-to-have / docs drift.
 
