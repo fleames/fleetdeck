@@ -140,6 +140,11 @@ export default function DashboardPage() {
           <p className="mt-1 text-sm text-[var(--text-1)]">
             Is everything okay? Health score is explainable and based on live registry state — never mock data.
           </p>
+          <p className="mt-2 text-[11px] text-[var(--text-2)]">
+            Freshness: <span style={{ color: "var(--ok)" }}>LIVE</span> &lt;30s ·{" "}
+            <span style={{ color: "var(--warn)" }}>RECENT</span> &lt;2m ·{" "}
+            <span style={{ color: "var(--crit)" }}>STALE</span> / OFFLINE
+          </p>
         </div>
         <button
           type="button"

@@ -33,3 +33,18 @@
 ## Offline servers
 
 - Heartbeat older than `AGENT_OFFLINE_AFTER_SECONDS` (default 45) marks the server offline without blocking the rest of the UI.
+
+## Metrics gaps after API outage
+
+- Agents ≥ this build spool failed metric POSTs to `metrics-buffer.jsonl` under the state dir (size/age capped). Heartbeat may show `buffered_samples` / `oldest_buffer_age_sec` on the agent row.
+- When the API returns, the agent flushes oldest-first. Gaps still appear as chart nulls (no invented points).
+
+## Retention deleted too much / history short
+
+- Confirm Settings retention days and `METRICS_*_RETENTION_DAYS` env defaults.
+- Worker DELETEs hourly; Settings restore does not undelete metrics — restore from Postgres backup.
+- See [MONITORING.md](./MONITORING.md) and [DATABASE.md](./DATABASE.md).
+
+## Login rate limit resets after API restart
+
+- Login/enroll limiters are **in-memory per API process**. Behind Cloudflare Tunnel, client IP uses `CF-Connecting-IP` when present. Multi-instance shared limits are not implemented yet.

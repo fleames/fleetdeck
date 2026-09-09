@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useRealtime } from "@/lib/realtime";
+import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/page-state";
 
 type Summary = {
   servers: number;
@@ -17,13 +19,20 @@ type Summary = {
 export default function DockerPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback((opts?: { soft?: boolean }) => {
     api
       .dockerSummary()
-      .then((s) => setSummary(s))
+      .then((s) => {
+        setSummary(s);
+        setError(null);
+      })
       .catch((e) => {
         if (!opts?.soft) setError(e instanceof Error ? e.message : "Failed to load");
+      })
+      .finally(() => {
+        if (!opts?.soft) setLoading(false);
       });
   }, []);
 
@@ -52,41 +61,54 @@ export default function DockerPage() {
         </p>
       </div>
 
-      {error && (
-        <div className="rounded-md border border-[var(--crit)]/40 bg-[var(--crit)]/10 px-3 py-2 text-sm text-[var(--crit)]">
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner message={error} />}
 
-      {!summary ? (
-        <div className="h-40 animate-pulse rounded-[var(--radius)] bg-[var(--bg-2)]" />
-      ) : summary.servers === 0 && summary.running === 0 && summary.images === 0 ? (
-        <div className="rounded-[var(--radius)] border border-dashed border-[var(--border-strong)] px-6 py-12 text-center text-sm text-[var(--text-1)]">
-          No Docker hosts have reported inventory yet.
-        </div>
+      {loading && !summary ? (
+        <LoadingBlock label="Loading Docker summary" />
+      ) : !summary ||
+        (summary.servers === 0 && summary.running === 0 && summary.images === 0) ? (
+        <EmptyBlock>No Docker hosts have reported inventory yet.</EmptyBlock>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Tile label="Servers" value={summary.servers} />
-          <Tile label="Running" value={summary.running} tone="ok" />
-          <Tile label="Stopped" value={summary.stopped} />
-          <Tile label="Unhealthy" value={summary.unhealthy} tone="warn" />
-          <Tile label="Images" value={summary.images} />
-          <Tile label="Volumes" value={summary.volumes} />
-          <Tile label="Networks" value={summary.networks} />
-        </div>
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Tile label="Servers" value={summary.servers} href="/servers" />
+            <Tile label="Running" value={summary.running} tone="ok" href="/containers?filter=running" />
+            <Tile label="Stopped" value={summary.stopped} href="/containers?filter=stopped" />
+            <Tile label="Unhealthy" value={summary.unhealthy} tone="warn" href="/containers?filter=unhealthy" />
+            <Tile label="Images" value={summary.images} href="/images" />
+            <Tile label="Volumes" value={summary.volumes} href="/volumes" />
+            <Tile label="Networks" value={summary.networks} href="/networks" />
+          </div>
+          <p className="text-xs text-[var(--text-2)]">
+            Open Containers / Images / Volumes / Networks for searchable tables.
+          </p>
+        </>
       )}
     </div>
   );
 }
 
-function Tile({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warn" }) {
+function Tile({
+  label,
+  value,
+  tone,
+  href,
+}: {
+  label: string;
+  value: number;
+  tone?: "ok" | "warn";
+  href: string;
+}) {
   const color = tone === "ok" ? "var(--ok)" : tone === "warn" ? "var(--warn)" : "var(--text-0)";
   return (
-    <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-1)] p-4">
+    <Link
+      href={href}
+      className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-1)] p-4 transition-colors hover:border-[var(--border-strong)]"
+    >
       <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-2)]">{label}</div>
       <div className="mt-2 font-[family-name:var(--font-mono-family)] text-2xl" style={{ color }}>
         {value}
       </div>
-    </div>
+    </Link>
   );
 }

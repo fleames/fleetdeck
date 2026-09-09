@@ -17,17 +17,27 @@ type ImageRow = {
 
 export default function ImagesPage() {
   const [rows, setRows] = useState<ImageRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const load = useCallback(() => {
+  const load = useCallback((opts?: { soft?: boolean }) => {
     api
       .images()
-      .then((d) => setRows(d.data ?? []))
-      .catch(() => undefined);
+      .then((d) => {
+        setRows(d.data ?? []);
+        setError(null);
+      })
+      .catch((e) => {
+        if (!opts?.soft) setError(e instanceof Error ? e.message : "Failed to load images");
+      })
+      .finally(() => {
+        if (!opts?.soft) setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
-    const boot = window.setTimeout(load, 0);
-    const poll = window.setInterval(load, 10000);
+    const boot = window.setTimeout(() => load(), 0);
+    const poll = window.setInterval(() => load({ soft: true }), 10000);
     return () => {
       window.clearTimeout(boot);
       window.clearInterval(poll);
@@ -35,7 +45,7 @@ export default function ImagesPage() {
   }, [load]);
 
   useRealtime((type) => {
-    if (type === "docker.updated" || type === "servers.updated") load();
+    if (type === "docker.updated" || type === "servers.updated") load({ soft: true });
   });
 
   return (
@@ -43,6 +53,9 @@ export default function ImagesPage() {
       title="Images"
       empty="No images reported."
       headers={["Repository", "Tag", "Server", "Size", "Flags"]}
+      searchPlaceholder="Search repository, tag, server…"
+      loading={loading}
+      error={error}
       rows={rows.map((r) => [
         r.repository,
         r.tag,

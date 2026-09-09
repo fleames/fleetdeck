@@ -16,6 +16,8 @@ export default function ServersPage() {
   const [currentAgentVersion, setCurrentAgentVersion] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [token, setToken] = useState<string | null>(null);
+  const [userCommand, setUserCommand] = useState<string | null>(null);
+  const [copiedUser, setCopiedUser] = useState(false);
   const [cdnCommand, setCdnCommand] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState<string | null>(null);
   const [bundleName, setBundleName] = useState<string | null>(null);
@@ -64,6 +66,7 @@ export default function ServersPage() {
   async function buildInstallers(enrollmentToken: string, serverName: string) {
     setBusyBuild(true);
     setCdnCommand(null);
+    setUserCommand(null);
     setApiUrl(null);
     setBundleReady(false);
     setBundleBlob(null);
@@ -81,6 +84,7 @@ export default function ServersPage() {
       }
       const cmdData = await cmdRes.json();
       setCdnCommand(cmdData.command as string);
+      setUserCommand((cmdData.user_command as string) || null);
       setApiUrl((cmdData.api_url as string) || null);
 
       const bundleRes = await apiFetch("/api/v1/agents/install-bundle", {
@@ -138,11 +142,16 @@ export default function ServersPage() {
     URL.revokeObjectURL(url);
   }
 
-  async function copyCommand(text: string | null) {
+  async function copyCommand(text: string | null, kind: "root" | "user" = "root") {
     if (!text) return;
     await navigator.clipboard.writeText(text);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
+    if (kind === "user") {
+      setCopiedUser(true);
+      window.setTimeout(() => setCopiedUser(false), 2000);
+    } else {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    }
   }
 
   async function removeServer(s: Server, force: boolean) {
@@ -289,17 +298,37 @@ export default function ServersPage() {
           {busyBuild && <p className="text-sm text-[var(--text-2)]">Building install command…</p>}
           {cdnCommand && (
             <>
+              <p className="text-xs text-[var(--text-2)]">VPS with sudo / root:</p>
               <pre className="overflow-auto rounded-md border border-[var(--border)] bg-[var(--bg-0)] p-3 font-[family-name:var(--font-mono-family)] text-xs break-all text-[var(--text-1)]">
                 {cdnCommand}
               </pre>
               <button
                 type="button"
-                onClick={() => void copyCommand(cdnCommand)}
+                onClick={() => void copyCommand(cdnCommand, "root")}
                 className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs text-white"
               >
                 {copied ? "Copied" : "Copy install command"}
               </button>
             </>
+          )}
+          {userCommand && (
+            <div className="space-y-2 border-t border-[var(--border)] pt-3">
+              <p className="text-xs text-[var(--text-2)]">
+                Seedbox / no sudo (installs under{" "}
+                <code className="text-[var(--text-1)]">~/.local/bin</code> +{" "}
+                <code className="text-[var(--text-1)]">~/.fleetdeck</code>):
+              </p>
+              <pre className="overflow-auto rounded-md border border-[var(--border)] bg-[var(--bg-0)] p-3 font-[family-name:var(--font-mono-family)] text-xs break-all text-[var(--text-1)]">
+                {userCommand}
+              </pre>
+              <button
+                type="button"
+                onClick={() => void copyCommand(userCommand, "user")}
+                className="rounded-md border border-[var(--border)] bg-[var(--bg-0)] px-3 py-1.5 text-xs text-[var(--text-1)]"
+              >
+                {copiedUser ? "Copied" : "Copy seedbox command"}
+              </button>
+            </div>
           )}
 
           {bundleReady && (

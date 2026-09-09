@@ -60,11 +60,6 @@ install -d -m 0755 /etc/fleetdeck /var/lib/fleetdeck
 if ! id fleetdeck >/dev/null 2>&1; then
   useradd --system --home /var/lib/fleetdeck --shell /usr/sbin/nologin fleetdeck
 fi
-# Docker socket access (ignore if docker group missing)
-if getent group docker >/dev/null 2>&1; then
-  usermod -aG docker fleetdeck || true
-fi
-
 install -m 0755 "$BINARY" "${PREFIX}/bin/fleetdeck-agent"
 chown root:root "${PREFIX}/bin/fleetdeck-agent"
 
@@ -107,7 +102,6 @@ Wants=network-online.target
 Type=simple
 User=fleetdeck
 Group=fleetdeck
-SupplementaryGroups=docker
 EnvironmentFile=-/etc/fleetdeck/agent.env
 ExecStart=/usr/local/bin/fleetdeck-agent -api ${FLEETDECK_URL} -state-dir /var/lib/fleetdeck -interval 10s
 Restart=always
@@ -121,6 +115,12 @@ ReadWritePaths=/var/lib/fleetdeck
 [Install]
 WantedBy=multi-user.target
 EOF
+fi
+# SupplementaryGroups=docker only when the group exists (else systemd fails with status=216/GROUP)
+sed -i '/^SupplementaryGroups=docker$/d' /etc/systemd/system/fleetdeck-agent.service
+if getent group docker >/dev/null 2>&1; then
+  usermod -aG docker fleetdeck || true
+  sed -i '/^Group=fleetdeck$/a SupplementaryGroups=docker' /etc/systemd/system/fleetdeck-agent.service
 fi
 
 UNINSTALL_SVC="$(cd "$(dirname "$0")" && pwd)/../deploy/agent/fleetdeck-agent-uninstall.service"

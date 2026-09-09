@@ -60,6 +60,11 @@ Copy-Item $InstallSrc (Join-Path $OutRoot "install.sh") -Force
 Copy-Item $InstallSrc (Join-Path $ChannelDir "install.sh") -Force
 Copy-Item $InstallSrc (Join-Path $VersionDir "install.sh") -Force
 
+$InstallUserSrc = Join-Path $Root "cdn\fleetdeck\install-user.sh"
+Copy-Item $InstallUserSrc (Join-Path $OutRoot "install-user.sh") -Force
+Copy-Item $InstallUserSrc (Join-Path $ChannelDir "install-user.sh") -Force
+Copy-Item $InstallUserSrc (Join-Path $VersionDir "install-user.sh") -Force
+
 $UpgradeSrc = Join-Path $Root "cdn\fleetdeck\upgrade.sh"
 Copy-Item $UpgradeSrc (Join-Path $OutRoot "upgrade.sh") -Force
 Copy-Item $UpgradeSrc (Join-Path $ChannelDir "upgrade.sh") -Force
@@ -85,6 +90,7 @@ Write-Sums $VersionDir
 Upload the contents of this folder to R2 (prefix fleetdeck/) so these URLs work:
 
 - https://cdn.tarkovbot.com/fleetdeck/install.sh
+- https://cdn.tarkovbot.com/fleetdeck/install-user.sh
 - https://cdn.tarkovbot.com/fleetdeck/upgrade.sh
 - https://cdn.tarkovbot.com/fleetdeck/config.json
 - https://cdn.tarkovbot.com/fleetdeck/latest/linux-amd64
@@ -100,6 +106,10 @@ config.json api_url = $ApiUrl
 VPS install (FleetDeck PC must be online with Cloudflare Tunnel):
 
 curl -fsSL https://cdn.tarkovbot.com/fleetdeck/install.sh | sudo bash -s -- --token 'TOKEN'
+
+Seedbox / no sudo (user install under ~/.local/bin + ~/.fleetdeck):
+
+curl -fsSL https://cdn.tarkovbot.com/fleetdeck/install.sh | bash -s -- --user --token 'TOKEN'
 
 Manual upgrade (keeps credentials; for 0.4.0 hosts without panel agent.update):
 

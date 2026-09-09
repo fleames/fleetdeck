@@ -19,7 +19,7 @@ Security is a first-class requirement. Local-first does not mean lax.
 3. **Dashboard never receives** Docker socket, agent secrets, DB passwords, or raw decryptable secret material.
 4. **Monitoring is read-only by default**; mutations require authz + confirmation + audit.
 5. **Never trust agent payloads** — validate schema, sizes, types, and IDs server-side.
-6. **Secrets encrypted at rest** (application-level envelope encryption + OS file perms).
+6. **Secrets at rest** — passwords/agent credentials/enrollment tokens are **hashed** (not reversible). The `secrets` table supports AES-GCM envelope encryption keyed from `SESSION_SECRET` for future app secrets; it is empty until a feature calls Put. Agent `credentials.json` on disk is plaintext with mode 0600.
 7. **No plaintext passwords** in DB or logs.
 
 ## Authentication
@@ -51,10 +51,12 @@ Initial roles (expand later):
 | Role | Capabilities |
 |------|--------------|
 | Admin | Full config, users, tokens, management actions |
-| Operator | View + acknowledge alerts + confirmed management |
-| Viewer | Read-only |
+| Operator | View + create servers / enrollment + acknowledge/resolve/silence alerts + confirmed management |
+| Viewer | Read-only (including personal notification dismiss / dashboard layout) |
 
 Enforce on every mutating route. Frontend hiding is not authorization.
+
+Realtime WebSocket `/api/v1/realtime` requires a signed-in session (not origin-only).
 
 ## Docker socket
 

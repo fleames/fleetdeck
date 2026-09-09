@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { API_URL } from "@/lib/api";
 import { useRealtime } from "@/lib/realtime";
+import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/page-state";
 
 type EventRow = {
   id: string;
@@ -16,24 +17,36 @@ type EventRow = {
 export default function EventsPage() {
   const [rows, setRows] = useState<EventRow[]>([]);
   const [q, setQ] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  async function load() {
-    const res = await fetch(`${API_URL}/api/v1/events`, { credentials: "include", cache: "no-store" });
-    const data = await res.json();
-    setRows(data.data ?? []);
-  }
+  const load = useCallback(async (opts?: { soft?: boolean }) => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/events`, { credentials: "include", cache: "no-store" });
+      if (!res.ok) throw new Error(`Events request failed (${res.status})`);
+      const data = await res.json();
+      setRows(data.data ?? []);
+      setError(null);
+    } catch (e) {
+      if (!opts?.soft) setError(e instanceof Error ? e.message : "Failed to load events");
+    } finally {
+      if (!opts?.soft) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const boot = window.setTimeout(() => void load(), 0);
-    const poll = window.setInterval(() => void load(), 10000);
+    const poll = window.setInterval(() => void load({ soft: true }), 10000);
     return () => {
       window.clearTimeout(boot);
       window.clearInterval(poll);
     };
-  }, []);
+  }, [load]);
 
   useRealtime((type) => {
-    if (type.startsWith("alert") || type === "servers.updated" || type === "docker.updated") void load();
+    if (type.startsWith("alert") || type === "servers.updated" || type === "docker.updated") {
+      void load({ soft: true });
+    }
   });
 
   const filtered = rows.filter((e) => {
@@ -56,10 +69,13 @@ export default function EventsPage() {
         placeholder="Search events…"
         className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-2)] px-3 py-2 text-sm"
       />
-      {filtered.length === 0 ? (
-        <div className="rounded-[var(--radius)] border border-dashed border-[var(--border-strong)] px-5 py-10 text-center text-sm text-[var(--text-2)]">
-          No infrastructure events yet.
-        </div>
+      {error && <ErrorBanner message={error} />}
+      {loading && rows.length === 0 && !error ? (
+        <LoadingBlock label="Loading events" />
+      ) : filtered.length === 0 ? (
+        <EmptyBlock>
+          {rows.length === 0 ? "No infrastructure events yet." : "No events match this search."}
+        </EmptyBlock>
       ) : (
         <ol className="space-y-2">
           {filtered.map((e) => (

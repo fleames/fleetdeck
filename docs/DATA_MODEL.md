@@ -13,7 +13,7 @@ users
 sessions
   id, user_id, token_hash, expires_at, created_at, ip, user_agent, revoked_at
 
-api_tokens (optional automation)
+api_tokens (planned / not implemented — session cookies are the only dashboard auth today)
   id, user_id, name, token_hash, scopes, created_at, last_used_at, revoked_at
 ```
 
@@ -102,7 +102,7 @@ secrets
   id, kind, name, ciphertext, nonce, key_version, created_at, rotated_at
 ```
 
-Never store agent secrets or passwords in plaintext columns.
+Envelope helpers (`apps/api/internal/secrets`) encrypt with a key derived from `SESSION_SECRET`. No product path writes rows yet — table is reserved. Never store agent secrets or user passwords in plaintext columns (those use Argon2id hashes elsewhere).
 
 ---
 
@@ -150,11 +150,11 @@ Store avg/max/min/p95 as needed (start with avg + max).
 
 | Tier | Retention |
 |------|-----------|
-| Raw | 7 days |
+| Raw | 7 days (env / Settings) |
 | 5-minute aggregates | 30 days |
 | 1-hour aggregates | 1 year |
 
-Downsample job must be idempotent and observable (self-metrics).
+Worker runs hourly: DELETE expired rows (DEFAULT partition; not DROP PARTITION yet) then downsample raw→5m and 5m→1h. Settings `metrics.*_retention_days` override env when set. Downsample is idempotent via ON CONFLICT. See [MONITORING.md](./MONITORING.md) / [DATABASE.md](./DATABASE.md).
 
 ---
 

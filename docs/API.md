@@ -68,7 +68,9 @@ List responses:
 | GET | `/servers/:id/events` |
 | POST | `/servers/compare` |
 
-Query params for history: `range=15m|1h|6h|24h|7d|30d|custom&from=&to=`
+Query params for history: `range=15m|1h|6h|24h|7d|30d`
+
+Response includes `source` (`raw`|`5m`|`1h`), `truncated` (true when lookback was capped to retention), and `since`. Mapping: `15m`/`1h`/`6h` → raw; `24h`/`7d` → `server_metrics_5m`; `30d` → `server_metrics_1h`.
 
 ### Agents & enrollment
 
@@ -130,10 +132,10 @@ Sensitive env vars in container detail: **masked by default**; `?reveal_env=1` r
 
 ## Realtime
 
-One authenticated WebSocket (or SSE) per browser session:
+One authenticated WebSocket per browser session. Requires a valid `fleetdeck_session` cookie (same as REST). Unauthenticated connections receive `401`. When `COOKIE_SECURE=true`, a browser `Origin` on the `WEB_ORIGIN` allowlist is required (empty Origin rejected).
 
 ```text
-/api/v1/realtime
+GET /api/v1/realtime
 ```
 
 Server → client message types (batched):

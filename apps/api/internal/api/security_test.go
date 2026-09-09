@@ -9,6 +9,23 @@ import (
 	"time"
 )
 
+func TestClientIPCloudflare(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	req.Header.Set("CF-Connecting-IP", "203.0.113.9")
+	if got := clientIP(req); got != "203.0.113.9" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestClientIPRemoteAddr(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "192.0.2.1:9999"
+	if got := clientIP(req); got != "192.0.2.1" {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestRateLimiter(t *testing.T) {
 	rl := newRateLimiter(3, time.Minute)
 	for i := 0; i < 3; i++ {

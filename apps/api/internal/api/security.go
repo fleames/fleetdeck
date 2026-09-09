@@ -3,6 +3,7 @@ package api
 import (
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,6 +45,10 @@ func (rl *rateLimiter) allow(key string) bool {
 }
 
 func clientIP(r *http.Request) string {
+	// Prefer Cloudflare's connecting IP when behind Tunnel / CF proxy.
+	if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cf != "" {
+		return cf
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
@@ -54,15 +59,20 @@ func clientIP(r *http.Request) string {
 var loginLimiter = newRateLimiter(20, time.Minute)
 var enrollLimiter = newRateLimiter(30, time.Minute)
 
-func (s *Server) requireRole(roles ...string) func(http.HandlerFunc) http.HandlerFunc {
-	allowed := map[string]struct{}{}
-	for _, role := range roles {
-		allowed[role] = struct{}{}
+func roleAllowed(role string, roles ...string) bool {
+	for _, r := range roles {
+		if role == r {
+			return true
+		}
 	}
+	return false
+}
+
+func (s *Server) requireRole(roles ...string) func(http.HandlerFunc) http.HandlerFunc {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return s.requireUser(func(w http.ResponseWriter, r *http.Request) {
 			u := r.Context().Value(ctxUser).(auth.User)
-			if _, ok := allowed[u.Role]; !ok {
+			if !roleAllowed(u.Role, roles...) {
 				httpx.Error(w, http.StatusForbidden, "forbidden", "Your role cannot perform this action.")
 				return
 			}

@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import ReactECharts from "echarts-for-react";
+import { MetricsChart } from "@/components/metrics-chart";
 import { API_URL, apiFetch } from "@/lib/api";
 import { StatusPill, agentVersionOutdated, agentSupportsPanelUpdate, AGENT_MANUAL_UPGRADE_CMD } from "@/components/status-pill";
 import { ResourceBar } from "@/components/resource-bar";
 import { formatBps, formatBytes, formatUptime, freshnessLabel, pct } from "@/lib/format";
+import { historyGapMs, withTimeGaps } from "@/lib/chart-series";
+import { ErrorBanner, EmptyBlock, LoadingBlock } from "@/components/page-state";
 
 type ServerDetail = {
   id: string;
@@ -47,7 +49,7 @@ type HistoryPoint = {
   net_tx_bps: number | null;
 };
 
-const ranges = ["15m", "1h", "6h", "24h", "7d"] as const;
+const ranges = ["15m", "1h", "6h", "24h", "7d", "30d"] as const;
 
 function agentLooksOnline(s: ServerDetail): boolean {
   if (s.status !== "online") return false;
@@ -61,9 +63,11 @@ export default function ServerDetailPage() {
   const id = params.id;
   const [server, setServer] = useState<ServerDetail | null>(null);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [historyMeta, setHistoryMeta] = useState<{ source?: string; truncated?: boolean }>({});
   const [range, setRange] = useState<(typeof ranges)[number]>("1h");
   const [tab, setTab] = useState<"overview" | "metrics" | "docker" | "events">("overview");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removeBusy, setRemoveBusy] = useState(false);
   const [removeMsg, setRemoveMsg] = useState<string | null>(null);
@@ -89,9 +93,12 @@ export default function ServerDetailPage() {
         if (cancelled) return;
         setServer(s);
         setHistory(h.data ?? []);
+        setHistoryMeta({ source: h.source, truncated: h.truncated });
         setError(null);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
     const boot = window.setTimeout(() => void load(), 0);
@@ -104,7 +111,13 @@ export default function ServerDetailPage() {
   }, [id, range]);
 
   const chartOption = useMemo(() => {
-    const times = history.map((p) => new Date(p.ts).toLocaleTimeString());
+    const gapMs = historyGapMs(historyMeta.source, range);
+    const gapped = withTimeGaps(history, gapMs);
+    const times = gapped.map((p) => (p ? new Date(p.ts).toLocaleTimeString() : ""));
+    const cpu = gapped.map((p) => (p == null ? null : p.cpu_pct));
+    const mem = gapped.map((p) => (p == null ? null : p.mem_used_bytes));
+    const rx = gapped.map((p) => (p == null ? null : p.net_rx_bps));
+    const tx = gapped.map((p) => (p == null ? null : p.net_tx_bps));
     return {
       backgroundColor: "transparent",
       textStyle: { color: "#8b97a8" },
@@ -121,7 +134,8 @@ export default function ServerDetailPage() {
           name: "CPU %",
           type: "line",
           showSymbol: false,
-          data: history.map((p) => p.cpu_pct),
+          connectNulls: false,
+          data: cpu,
           lineStyle: { color: "#3d9cf0", width: 2 },
           areaStyle: { color: "rgba(61,156,240,0.12)" },
         },
@@ -130,7 +144,8 @@ export default function ServerDetailPage() {
           type: "line",
           yAxisIndex: 1,
           showSymbol: false,
-          data: history.map((p) => p.mem_used_bytes),
+          connectNulls: false,
+          data: mem,
           lineStyle: { color: "#3ecf8e", width: 2 },
         },
         {
@@ -138,7 +153,8 @@ export default function ServerDetailPage() {
           type: "line",
           yAxisIndex: 1,
           showSymbol: false,
-          data: history.map((p) => p.net_rx_bps),
+          connectNulls: false,
+          data: rx,
           lineStyle: { color: "#e6b84d", width: 1.5 },
         },
         {
@@ -146,12 +162,13 @@ export default function ServerDetailPage() {
           type: "line",
           yAxisIndex: 1,
           showSymbol: false,
-          data: history.map((p) => p.net_tx_bps),
+          connectNulls: false,
+          data: tx,
           lineStyle: { color: "#f07178", width: 1.5 },
         },
       ],
     };
-  }, [history]);
+  }, [history, historyMeta.source, range]);
 
   async function removeServer(force: boolean) {
     if (!server) return;
@@ -222,15 +239,15 @@ export default function ServerDetailPage() {
 
   if (error) {
     return (
-      <div className="rounded-[var(--radius)] border border-[var(--crit)]/30 bg-[var(--bg-1)] p-6">
+      <div className="mx-auto max-w-6xl space-y-4">
         <h1 className="text-lg font-semibold">Server unavailable</h1>
-        <p className="mt-2 text-sm text-[var(--text-1)]">{error}</p>
+        <ErrorBanner message={error} />
       </div>
     );
   }
 
-  if (!server) {
-    return <div className="h-64 animate-pulse rounded-[var(--radius)] bg-[var(--bg-2)]" />;
+  if (loading || !server) {
+    return <LoadingBlock label="Loading server" />;
   }
 
   const memPct = pct(server.metrics?.mem_used_bytes, server.metrics?.mem_total_bytes);
@@ -455,12 +472,17 @@ export default function ServerDetailPage() {
             </div>
           </div>
           <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-1)] p-3">
-            {history.length === 0 ? (
-              <div className="flex h-64 items-center justify-center text-sm text-[var(--text-2)]">
-                Metrics unavailable — no history for this range yet.
+            {(historyMeta.source || historyMeta.truncated) && (
+              <div className="mb-2 text-[11px] text-[var(--text-2)]">
+                {historyMeta.source ? `Source: ${historyMeta.source}` : null}
+                {historyMeta.truncated ? " · range capped to retention" : null}
+                {" · gaps break the line (no invented samples)"}
               </div>
+            )}
+            {history.length === 0 ? (
+              <EmptyBlock>Metrics unavailable — no history for this range yet.</EmptyBlock>
             ) : (
-              <ReactECharts option={chartOption} style={{ height: 280 }} opts={{ renderer: "canvas" }} />
+              <MetricsChart option={chartOption} height={280} />
             )}
           </div>
         </div>
@@ -482,12 +504,17 @@ export default function ServerDetailPage() {
             ))}
           </div>
           <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-1)] p-3">
-            {history.length === 0 ? (
-              <div className="flex h-80 items-center justify-center text-sm text-[var(--text-2)]">
-                No samples in this range.
+            {(historyMeta.source || historyMeta.truncated) && (
+              <div className="mb-2 text-[11px] text-[var(--text-2)]">
+                {historyMeta.source ? `Source: ${historyMeta.source}` : null}
+                {historyMeta.truncated ? " · range capped to retention" : null}
+                {" · gaps break the line (no invented samples)"}
               </div>
+            )}
+            {history.length === 0 ? (
+              <EmptyBlock>No samples in this range.</EmptyBlock>
             ) : (
-              <ReactECharts option={chartOption} style={{ height: 360 }} opts={{ renderer: "canvas" }} />
+              <MetricsChart option={chartOption} height={360} />
             )}
           </div>
         </div>

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/httpx"
-	"github.com/google/uuid"
 )
 
 type metricSample struct {
@@ -68,6 +67,11 @@ func (s *Server) handleAgentMetrics(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Metrics batch exceeds limits.")
 		return
 	}
+	if !s.tryAcquireIngest() {
+		httpx.Error(w, http.StatusServiceUnavailable, "backpressure", "Ingest saturated; retry shortly.")
+		return
+	}
+	defer s.releaseIngest()
 
 	ctx := r.Context()
 	tx, err := s.pool.Begin(ctx)
@@ -77,86 +81,14 @@ func (s *Server) handleAgentMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 
-	var lastTS time.Time
-	for _, m := range body.Host {
-		ts := m.TS
-		if ts.IsZero() {
-			ts = time.Now().UTC()
-		}
-		if ts.After(lastTS) {
-			lastTS = ts
-		}
-		_, err := tx.Exec(ctx, `
-			INSERT INTO server_metrics_raw (
-				ts, server_id, cpu_pct, load1, load5, load15,
-				mem_used_bytes, mem_available_bytes, mem_cached_bytes, swap_used_bytes,
-				disk_used_bytes, disk_total_bytes, net_rx_bps, net_tx_bps, net_rx_errs, net_tx_errs, uptime_seconds
-			) VALUES (
-				$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
-			)
-			ON CONFLICT (server_id, ts) DO UPDATE SET
-				cpu_pct=EXCLUDED.cpu_pct,
-				load1=EXCLUDED.load1,
-				load5=EXCLUDED.load5,
-				load15=EXCLUDED.load15,
-				mem_used_bytes=EXCLUDED.mem_used_bytes,
-				mem_available_bytes=EXCLUDED.mem_available_bytes,
-				mem_cached_bytes=EXCLUDED.mem_cached_bytes,
-				swap_used_bytes=EXCLUDED.swap_used_bytes,
-				disk_used_bytes=EXCLUDED.disk_used_bytes,
-				disk_total_bytes=EXCLUDED.disk_total_bytes,
-				net_rx_bps=EXCLUDED.net_rx_bps,
-				net_tx_bps=EXCLUDED.net_tx_bps,
-				net_rx_errs=EXCLUDED.net_rx_errs,
-				net_tx_errs=EXCLUDED.net_tx_errs,
-				uptime_seconds=EXCLUDED.uptime_seconds`,
-			ts, ident.ServerID, m.CPUPct, m.Load1, m.Load5, m.Load15,
-			m.MemUsedBytes, m.MemAvailableBytes, m.MemCachedBytes, m.SwapUsedBytes,
-			m.DiskUsedBytes, m.DiskTotalBytes, m.NetRxBps, m.NetTxBps, m.NetRxErrs, m.NetTxErrs, m.UptimeSeconds,
-		)
-		if err != nil {
-			httpx.Error(w, http.StatusInternalServerError, "internal", "Could not store host metrics.")
-			return
-		}
+	lastTS, err := insertHostMetricsBatch(ctx, tx, ident.ServerID, body.Host)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", "Could not store host metrics.")
+		return
 	}
-
-	for _, m := range body.Containers {
-		if m.ContainerID == "" {
-			continue
-		}
-		var containerUUID uuid.UUID
-		err := tx.QueryRow(ctx, `
-			SELECT id FROM containers WHERE server_id=$1 AND container_id=$2`,
-			ident.ServerID, m.ContainerID,
-		).Scan(&containerUUID)
-		if err != nil {
-			continue // inventory may arrive later
-		}
-		ts := m.TS
-		if ts.IsZero() {
-			ts = time.Now().UTC()
-		}
-		_, err = tx.Exec(ctx, `
-			INSERT INTO container_metrics_raw (
-				ts, server_id, container_id, cpu_pct, mem_used_bytes, mem_limit_bytes,
-				net_rx_bps, net_tx_bps, blk_read_bps, blk_write_bps, pids
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-			ON CONFLICT (container_id, ts) DO UPDATE SET
-				cpu_pct=EXCLUDED.cpu_pct,
-				mem_used_bytes=EXCLUDED.mem_used_bytes,
-				mem_limit_bytes=EXCLUDED.mem_limit_bytes,
-				net_rx_bps=EXCLUDED.net_rx_bps,
-				net_tx_bps=EXCLUDED.net_tx_bps,
-				blk_read_bps=EXCLUDED.blk_read_bps,
-				blk_write_bps=EXCLUDED.blk_write_bps,
-				pids=EXCLUDED.pids`,
-			ts, ident.ServerID, containerUUID, m.CPUPct, m.MemUsedBytes, m.MemLimitBytes,
-			m.NetRxBps, m.NetTxBps, m.BlkReadBps, m.BlkWriteBps, m.PIDs,
-		)
-		if err != nil {
-			httpx.Error(w, http.StatusInternalServerError, "internal", "Could not store container metrics.")
-			return
-		}
+	if err := insertContainerMetricsBatch(ctx, tx, ident.ServerID, body.Containers); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", "Could not store container metrics.")
+		return
 	}
 
 	if !lastTS.IsZero() {

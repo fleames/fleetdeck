@@ -3,7 +3,7 @@
 ## 0.4.2-dev
 
 - Panel **Update agent** (`POST /api/v1/servers/{id}/update-agent`) queues `agent.update`
-- Agent downloads CDN `linux-{arch}`, optional SHA256SUMS verify, privileged path unit replaces binary + restarts (credentials preserved)
+- Agent downloads CDN `linux-{arch}`, **required** SHA256SUMS verify (fail closed), privileged path unit replaces binary + restarts (credentials preserved)
 - Installers install `fleetdeck-agent-update.path` / `.service` + `/usr/local/libexec/fleetdeck/update`
 - CDN **`upgrade.sh`** for manual 0.4.0 → current upgrades (keeps credentials; installs missing path units)
 - Dashboard overview server cards show **Update available** when `agent_version` ≠ panel `current_agent_version`

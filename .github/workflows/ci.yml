@@ -63,9 +63,10 @@ jobs:
           cache-dependency-path: apps/web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      - run: pnpm test
       - run: pnpm build
-      - name: Audit
-        run: pnpm audit --prod || true
+      - name: Audit (fail on high/critical)
+        run: pnpm audit --prod --audit-level=high
 
   compose:
     runs-on: ubuntu-latest

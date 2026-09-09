@@ -114,7 +114,7 @@ Key variables (see `.env.example`):
 | Variable | Purpose |
 |----------|---------|
 | `DATABASE_URL` | Postgres connection string |
-| `SESSION_SECRET` | ≥ 32 chars — session + envelope encryption |
+| `SESSION_SECRET` | ≥ 32 chars — derives envelope key for `secrets` table (sessions are opaque + DB-hashed) |
 | `WEB_ORIGIN` | Dashboard origins for CORS/cookies |
 | `API_PUBLIC_URL` | URL agents use after enroll (tunnel hostname for remote) |
 | `AGENT_CDN_BASE` / `AGENT_CDN_CHANNEL` | Where panel updates pull binaries |

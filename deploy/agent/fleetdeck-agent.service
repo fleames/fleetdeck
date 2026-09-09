@@ -7,7 +7,6 @@ Wants=network-online.target
 Type=simple
 User=fleetdeck
 Group=fleetdeck
-SupplementaryGroups=docker
 EnvironmentFile=-/etc/fleetdeck/agent.env
 ExecStart=/usr/local/bin/fleetdeck-agent -api ${FLEETDECK_URL} -state-dir /var/lib/fleetdeck -interval 10s
 Restart=always

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/config"
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/httpx"
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/realtime"
+	"github.com/fleetdeck/fleetdeck/apps/api/internal/secrets"
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -19,16 +21,37 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Max concurrent metrics ingest transactions (backpressure when saturated).
+const maxConcurrentIngest = 64
+
 type Server struct {
-	cfg  config.Config
-	pool *pgxpool.Pool
-	auth *auth.Service
-	hub  *realtime.Hub
+	cfg       config.Config
+	pool      *pgxpool.Pool
+	auth      *auth.Service
+	hub       *realtime.Hub
+	secrets   *secrets.Store
+	ingestSem chan struct{}
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool, hub *realtime.Hub) *Server {
-	return &Server{cfg: cfg, pool: pool, auth: auth.NewService(pool, cfg.CookieSecure), hub: hub}
+	s := &Server{
+		cfg:       cfg,
+		pool:      pool,
+		auth:      auth.NewService(pool, cfg.CookieSecure),
+		hub:       hub,
+		ingestSem: make(chan struct{}, maxConcurrentIngest),
+	}
+	store, err := secrets.NewStore(pool, cfg.SessionSecret)
+	if err != nil {
+		log.Printf("secrets store: %v (envelope Put/Get unavailable)", err)
+	} else {
+		s.secrets = store
+	}
+	return s
 }
+
+// Secrets returns the envelope store (may be nil if key derivation failed).
+func (s *Server) Secrets() *secrets.Store { return s.secrets }
 
 func (s *Server) Hub() *realtime.Hub { return s.hub }
 
@@ -67,7 +90,7 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/overview", s.requireUser(s.handleOverview))
 			r.Get("/servers", s.requireUser(s.handleListServers))
-			r.Post("/servers", s.requireUser(s.handleCreateServer))
+			r.Post("/servers", s.requireRole("admin", "operator")(s.handleCreateServer))
 			r.Get("/servers/{id}", s.requireUser(s.handleGetServer))
 			r.Post("/servers/{id}/remove", s.requireRole("admin", "operator")(s.handleRemoveServer))
 			r.Post("/servers/{id}/update-agent", s.requireRole("admin", "operator")(s.handleUpdateAgent))
@@ -83,9 +106,9 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/alerts", s.requireUser(s.handleListAlerts))
 			r.Get("/alert-rules", s.requireUser(s.handleListAlertRules))
-			r.Post("/alerts/{id}/acknowledge", s.requireUser(s.handleAckAlert))
-			r.Post("/alerts/{id}/resolve", s.requireUser(s.handleResolveAlert))
-			r.Post("/alerts/{id}/silence", s.requireUser(s.handleSilenceAlert))
+			r.Post("/alerts/{id}/acknowledge", s.requireRole("admin", "operator")(s.handleAckAlert))
+			r.Post("/alerts/{id}/resolve", s.requireRole("admin", "operator")(s.handleResolveAlert))
+			r.Post("/alerts/{id}/silence", s.requireRole("admin", "operator")(s.handleSilenceAlert))
 
 			r.Get("/events", s.requireUser(s.handleListEvents))
 			r.Get("/search", s.requireUser(s.handleSearch))
@@ -232,9 +255,30 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRealtime(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.auth.UserFromRequest(r.Context(), r); err != nil {
+		if errors.Is(err, auth.ErrUnauthenticated) {
+			httpx.Error(w, http.StatusUnauthorized, "unauthenticated", "Sign in required.")
+			return
+		}
+		httpx.Error(w, http.StatusServiceUnavailable, "auth_unavailable",
+			"Could not verify session. Retry shortly.")
+		return
+	}
 	origin := r.Header.Get("Origin")
-	ok := origin == "" || originAllowedAny(origin, s.cfg.WebOrigins)
-	s.hub.ServeWS(w, r, ok)
+	if !realtimeOriginOK(origin, s.cfg.WebOrigins, s.cfg.CookieSecure) {
+		http.Error(w, "origin not allowed", http.StatusForbidden)
+		return
+	}
+	s.hub.ServeWS(w, r, true)
+}
+
+// realtimeOriginOK requires a browser Origin on the allowlist.
+// Empty Origin is rejected when CookieSecure (production/HTTPS); allowed only for local tooling.
+func realtimeOriginOK(origin string, allowed []string, cookieSecure bool) bool {
+	if origin == "" {
+		return !cookieSecure
+	}
+	return originAllowedAny(origin, allowed)
 }
 
 func originAllowedAny(origin string, allowed []string) bool {

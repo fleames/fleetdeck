@@ -85,6 +85,16 @@ curl -fsSL https://cdn.tarkovbot.com/fleetdeck/install.sh | sudo bash -s -- --to
 
 Your PC must stay online (Compose + cloudflared).
 
+### Seedbox / no sudo
+
+Shared hosts often have no `sudo` (and `su` is locked). Use user mode — installs under `~/.local/bin` + `~/.fleetdeck`, no system user:
+
+```bash
+curl -fsSL https://cdn.tarkovbot.com/fleetdeck/install.sh | bash -s -- --user --token 'TOKEN'
+```
+
+Non-root shells also auto-select user mode if you omit `--user`. Prefers `systemctl --user` when available; otherwise starts with `nohup` and prints cron `@reboot` instructions.
+
 ## Remove / uninstall
 
 Dashboard → **Servers** → **Remove** (or server detail → Remove):
@@ -97,7 +107,7 @@ Dashboard → **Servers** → **Remove** (or server detail → Remove):
 Dashboard → **Servers** → **Update agent** (or server detail):
 
 - Requires an **online** agent with **0.4.2-dev+** and `fleetdeck-agent-update.path` (included in current `install.sh` / `upgrade.sh`).
-- Pulls `${CDN}/${channel}/linux-{arch}`, optional `SHA256SUMS` verify, replaces binary, restarts — credentials stay.
+- Pulls `${CDN}/${channel}/linux-{arch}`, **requires** `SHA256SUMS` verify (fail closed), replaces binary, restarts — credentials stay.
 - After releasing a new agent binary, republish CDN (uploads automatically when R2 is configured):
 
 ```powershell

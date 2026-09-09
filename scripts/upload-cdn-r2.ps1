@@ -242,6 +242,7 @@ if (-not $SkipVerify) {
   $checks = @(
     "$PublicBase/config.json",
     "$PublicBase/install.sh",
+    "$PublicBase/install-user.sh",
     "$PublicBase/upgrade.sh"
   )
   Write-Host "Verifying public CDN URLs..."
