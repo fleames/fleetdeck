@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/auth"
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/httpx"
+	"github.com/fleetdeck/fleetdeck/apps/api/internal/worker"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -160,13 +162,28 @@ func (s *Server) handleSelfMetrics(w http.ResponseWriter, r *http.Request) {
 	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM alert_instances WHERE status IN ('active','acknowledged')`).Scan(&activeAlerts)
 	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM server_metrics_raw WHERE ts > now() - interval '1 hour'`).Scan(&rawPoints)
 
-	started := time.Now().UTC() // approximate; process start tracked below via package var if set
+	ws := worker.Snapshot()
+	workerOut := map[string]any{}
+	if !ws.LastRetainAt.IsZero() {
+		workerOut["last_retain_at"] = ws.LastRetainAt
+	}
+	if !ws.LastAlertsAt.IsZero() {
+		workerOut["last_alerts_at"] = ws.LastAlertsAt
+	}
+	if !ws.LastOfflineAt.IsZero() {
+		workerOut["last_offline_at"] = ws.LastOfflineAt
+	}
+	if !ws.LastPartAt.IsZero() {
+		workerOut["last_partitions_at"] = ws.LastPartAt
+	}
+
+	started := time.Now().UTC()
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"api": map[string]any{
-			"status":     "ok",
-			"started_at": processStartedAt,
+			"status":         "ok",
+			"started_at":     processStartedAt,
 			"uptime_seconds": int(time.Since(processStartedAt).Seconds()),
-			"checked_at": started,
+			"checked_at":     started,
 		},
 		"fleet": map[string]any{
 			"servers":        servers,
@@ -177,10 +194,29 @@ func (s *Server) handleSelfMetrics(w http.ResponseWriter, r *http.Request) {
 		"ingestion": map[string]any{
 			"server_metric_points_last_hour": rawPoints,
 		},
+		"worker": workerOut,
+		"webhook_configured": strings.TrimSpace(s.cfg.AlertWebhookURL) != "" || s.alertsWebhookConfigured(r.Context()),
 	})
 }
 
 var processStartedAt = time.Now().UTC()
+
+func (s *Server) alertsWebhookConfigured(ctx context.Context) bool {
+	if strings.TrimSpace(s.cfg.AlertWebhookURL) != "" {
+		return true
+	}
+	var rawJSON []byte
+	if err := s.pool.QueryRow(ctx, `SELECT value FROM settings WHERE key='alerts'`).Scan(&rawJSON); err != nil {
+		return false
+	}
+	var m struct {
+		WebhookURL string `json:"webhook_url"`
+	}
+	if json.Unmarshal(rawJSON, &m) != nil {
+		return false
+	}
+	return strings.TrimSpace(m.WebhookURL) != ""
+}
 
 func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 	u := r.Context().Value(ctxUser).(auth.User)
@@ -448,8 +484,10 @@ func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"data": out,
 		"integrations": map[string]any{
-			"email": false, "discord": false, "slack": false, "webhooks": false, "push": false,
-			"note": "External channels are architected but not mandatory for local operation.",
+			"email": false, "discord": false, "slack": false,
+			"webhooks": s.alertsWebhookConfigured(r.Context()),
+			"push":     false,
+			"note":     "Set ALERT_WEBHOOK_URL or settings.alerts.webhook_url for fire/resolve POSTs. Email/Discord/Slack remain optional.",
 		},
 	})
 }

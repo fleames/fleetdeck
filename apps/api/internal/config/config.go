@@ -30,6 +30,7 @@ type Config struct {
 	RelayURL             string // wss://agents.tarkovbot.com/edge/connect — enables outbound edge
 	RelayToken           string
 	RelayLocalURL        string // loopback API for edge proxy (default http://127.0.0.1:8080)
+	AlertWebhookURL      string // optional POST target on alert fire/resolve
 }
 
 func Load() (Config, error) {
@@ -58,6 +59,7 @@ func Load() (Config, error) {
 		RelayURL:           strings.TrimSpace(os.Getenv("RELAY_URL")),
 		RelayToken:         strings.TrimSpace(os.Getenv("RELAY_TOKEN")),
 		RelayLocalURL:      getenv("RELAY_LOCAL_URL", "http://127.0.0.1:8080"),
+		AlertWebhookURL:    strings.TrimSpace(os.Getenv("ALERT_WEBHOOK_URL")),
 	}
 
 	if cfg.DatabaseURL == "" {

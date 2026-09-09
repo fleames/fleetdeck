@@ -91,7 +91,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	if !loginLimiter.allow(clientIP(r)) {
+	if loginLimiter != nil && !loginLimiter.allow(r.Context(), clientIP(r)) {
 		httpx.Error(w, http.StatusTooManyRequests, "rate_limited", "Too many login attempts. Try again shortly.")
 		return
 	}

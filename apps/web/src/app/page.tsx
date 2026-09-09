@@ -130,7 +130,7 @@ export default function DashboardPage() {
   const empty = overview.counts.servers === 0;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6" data-testid="overview-dashboard">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--text-2)]">

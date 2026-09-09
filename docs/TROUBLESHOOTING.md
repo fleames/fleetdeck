@@ -42,9 +42,9 @@
 ## Retention deleted too much / history short
 
 - Confirm Settings retention days and `METRICS_*_RETENTION_DAYS` env defaults.
-- Worker DELETEs hourly; Settings restore does not undelete metrics — restore from Postgres backup.
+- Worker DROPs fully-aged monthly partitions and DELETEs DEFAULT/agg leftovers hourly; Settings restore does not undelete metrics — restore from Postgres backup.
 - See [MONITORING.md](./MONITORING.md) and [DATABASE.md](./DATABASE.md).
 
-## Login rate limit resets after API restart
+## Login rate limit
 
-- Login/enroll limiters are **in-memory per API process**. Behind Cloudflare Tunnel, client IP uses `CF-Connecting-IP` when present. Multi-instance shared limits are not implemented yet.
+- Login/enroll counters live in Postgres (`rate_limit_buckets`) so they survive API restarts and apply across replicas. If the DB write fails, the process falls back to an in-memory limiter. Behind Cloudflare Tunnel, client IP uses `CF-Connecting-IP` when present.

@@ -11,7 +11,8 @@ Postgres 16 (Compose) is the single store for registry, inventory, metrics, aler
 | Agent secrets | `agent_credentials.secret_hash` | Argon2id; agent keeps plaintext in `credentials.json` mode 0600 |
 | Enrollment tokens | `enrollment_tokens.token_hash` | Hashed |
 | App secrets table | `secrets` (ciphertext, nonce, key_version) | AES-256-GCM via `SESSION_SECRET`-derived key (`apps/api/internal/secrets`). **Ready for Put/Get; no product feature writes rows yet** |
-| Metrics | `server_metrics_raw` / `_5m` / `_1h`, `container_metrics_raw` | Not encrypted; protect via DB access + volume permissions |
+| Metrics | `server_metrics_raw` / `_5m` / `_1h`, `container_metrics_raw` | Not encrypted; raw parent tables are RANGE-partitioned (monthly + DEFAULT) |
+| Rate limits | `rate_limit_buckets` | Login/enroll counters shared across API processes |
 
 ## `SESSION_SECRET`
 
@@ -25,5 +26,9 @@ Embedded SQL under `apps/api/internal/db/migrations/`, applied on API start via 
 
 - Volume / `pg_dump` of the Postgres data directory is the restore path for metrics and inventory.
 - Export endpoints and Settings JSON are config/convenience — not a full DR strategy.
+
+## Health
+
+`GET /healthz` returns `status`, `database`, fleet online counts, ingest points last hour, and worker last-run timestamps when available. Authenticated self-metrics: `GET /api/v1/overview/self`.
 
 See also: [DATA_MODEL.md](./DATA_MODEL.md), [MONITORING.md](./MONITORING.md), [DEPLOYMENT.md](./DEPLOYMENT.md).
