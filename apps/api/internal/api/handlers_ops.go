@@ -484,10 +484,12 @@ func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"data": out,
 		"integrations": map[string]any{
-			"email": false, "discord": false, "slack": false,
+			"email":    false,
+			"discord":  true, // Discord-compatible webhook formatting when URL matches / format=discord
+			"slack":    true, // Slack incoming-webhook formatting when URL matches / format=slack
 			"webhooks": s.alertsWebhookConfigured(r.Context()),
 			"push":     false,
-			"note":     "Set ALERT_WEBHOOK_URL or settings.alerts.webhook_url for fire/resolve POSTs. Email/Discord/Slack remain optional.",
+			"note":     "Set alerts.webhook_url in Settings (or ALERT_WEBHOOK_URL). Discord/Slack auto-detected; optional HMAC via secrets webhook/alert_signing. Email still deferred.",
 		},
 	})
 }

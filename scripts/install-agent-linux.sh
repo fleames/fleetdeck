@@ -183,6 +183,7 @@ EOF
 fi
 
 # One-shot enroll as fleetdeck user
+umask 077
 sudo -u fleetdeck "${PREFIX}/bin/fleetdeck-agent" \
   -api "$API_URL" \
   -token "$TOKEN" \

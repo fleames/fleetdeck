@@ -18,6 +18,8 @@ This report is an honest gate after Phase 1 audit + P1–P3 hardening + follow-o
 
 Core product paths (enroll → agent metrics → alerts → Docker actions → dashboard) are real, authenticated, and tested at unit + browser smoke level. Remaining gaps are scale polish, optional features, and operational maturity—not fake metrics or open unauthenticated fleet REST.
 
+**Product limits explicitly accepted for this verdict (not solved):** control-plane **SPOF** (single API process + reachable public URL) and **DEFAULT** partition residual DELETE for leftover/historical raw rows. See limitations 1–3 below. Do not claim bare `READY` until those are solved or formally out-of-scope in user-facing ops docs with operator sign-off.
+
 ---
 
 ## What was audited
@@ -47,7 +49,7 @@ Covered: architecture, data integrity, agent security, Docker actions, AuthN/Aut
 
 | ID | Fix / note |
 |----|------------|
-| P2.1 | AES-GCM secrets envelope + honest docs (no product Put yet) |
+| P2.1 | AES-GCM secrets envelope + admin PUT/DELETE + Settings signing-secret UI |
 | P2.2 | Multi-row metrics INSERT + ingest backpressure; monthly partition create/drop job |
 | P2.3 | Agent durable metrics buffer + heartbeat buffer fields |
 | P2.4 | Settings retention → worker; DROP aged monthly partitions + DELETE fallback |
@@ -65,18 +67,23 @@ Covered: architecture, data integrity, agent security, Docker actions, AuthN/Aut
 | Metrics page aligned with page-state + StatusPill | done |
 | Remove unused `PlaceholderPage` | done |
 | A11y basics: skip link, main landmark, nav `aria-current`, labels | done |
-| Alert scope (`scope_type`/`scope_ids`) in evaluator | **done** (this pass) |
-| Webhook channel on fire/resolve (`ALERT_WEBHOOK_URL` / settings) | **done** (this pass) |
+| Alert scope (`scope_type`/`scope_ids`) in evaluator | done |
+| Webhook channel + Discord/Slack-compatible formatting + Settings UI | **done** (this pass) |
 | OpenAPI / `packages/shared` | **not done** (empty / deferred) |
 | Free-form drag dashboard grid | **not done** (widget show/hide only) |
 
-### Follow-on (2026-09-09 limitation pass)
+### Follow-on (2026-09-09)
 
 | Item | Evidence |
 |------|----------|
 | Expanded `/healthz` | DB ping + online agents/servers + ingest last-hour + worker last-run |
 | Self-metrics worker/webhook fields | `/api/v1/overview/self` |
-| Playwright browser smoke | `apps/web/e2e/smoke.spec.ts`; CI `e2e` job (compose up → bootstrap → overview) |
+| Playwright browser smoke | `apps/web/e2e/smoke.spec.ts`; CI `e2e` job |
+| Secrets product path | `PUT/DELETE /api/v1/secrets/{kind}/{name}`; Settings webhook + signing secret |
+| Alert Discord/Slack shaping | Auto-detect URL; `alerts.webhook_format`; optional HMAC on JSON |
+| Audit loud fail | `CRITICAL:` log on `audit_logs` insert failure |
+| Agent creds permissions | `umask 077` + post-enroll `chmod 0700/0600`; agent `Chmod` after write; SECURITY threat model |
+| Compose local HTTPS | Documented as out-of-scope for Compose itself (proxy/Tunnel) |
 
 ---
 
@@ -84,31 +91,29 @@ Covered: architecture, data integrity, agent security, Docker actions, AuthN/Aut
 
 | Check | Result |
 |-------|--------|
-| `go test ./...` in `apps/api` | pass |
-| `go test ./...` in `apps/agent` | pass (prior + unchanged paths) |
-| `pnpm test` in `apps/web` | pass (unit) |
-| `pnpm lint` in `apps/web` | pass (prior) |
+| `go test ./...` in `apps/api` | pass (webhook format + secrets validation + prior) |
+| `go test ./...` in `apps/agent` | pass (credentials chmod) |
+| `pnpm test` in `apps/web` | pass |
 | Playwright smoke (CI job) | wired: bootstrap/login → `overview-dashboard` |
-| Compose `api` `/healthz` | expanded JSON (`status`, `database`, `fleet`, `ingest`, `worker`) |
+| Compose `api` `/healthz` | expanded JSON |
 | GPG-signed release SHA256SUMS | **not done** (optional) |
 
 ---
 
 ## What remains / known limitations
 
-1. **Single API process** — ingest + workers + WS in one binary; restart drops WS (polls compensate).
-2. **Control-plane SPOF** — remote agents depend on reachable `API_PUBLIC_URL` / Tunnel host.
-3. **Metrics storage** — monthly partitions created for current/next month; aged named partitions DROP; **DEFAULT** partition still uses DELETE for leftover/historical rows; BRIN optional later.
+1. **Single API process** — ingest + workers + WS in one binary; restart drops WS (polls compensate). **Accepted product limit** for local-first until HA redesign.
+2. **Control-plane SPOF** — remote agents depend on reachable `API_PUBLIC_URL` / Tunnel host. **Accepted** for home-lab; not multi-region ready.
+3. **Metrics storage** — monthly partitions created for current/next month; aged named partitions DROP; **DEFAULT** partition still uses DELETE for leftover/historical rows; BRIN optional later. **Accepted residual.**
 4. **Rate limits** — login/enroll counters in Postgres (`rate_limit_buckets`); fall back to in-memory if DB write fails. Not Redis; no global API rate limit beyond those endpoints.
-5. **Secrets product path** — envelope crypto exists; no Settings UI writer for arbitrary secrets yet.
-6. **Alert channels** — webhook fire/resolve done; email/Discord/Slack still not implemented (local-first).
-7. **Audit durability** — audit inserts remain best-effort (`_ = Exec` style); no dropped-audit metrics.
-8. **Topology** — inventory hierarchy, not a rich interactive map; no free-form dashboard grid.
-9. **Contracts** — `packages/shared` empty; no OpenAPI codegen.
-10. **`api_tokens`** — documented as planned only; session cookies are dashboard auth.
-11. **TLS** — terminated at reverse proxy / Tunnel; Compose itself is HTTP on localhost.
-12. **Tests** — Playwright smoke in CI; no full DB integration suite / multi-browser matrix.
-13. **Agent credentials on disk** — plaintext JSON at 0600 (host compromise = that host’s agent identity).
+5. **Alert email** — Discord/Slack-compatible webhooks done; SMTP/email still deferred.
+6. **Audit durability** — inserts log `CRITICAL` on failure; still best-effort (no transactional auth+audit, no dropped-audit metrics / compliance bus).
+7. **Topology** — inventory hierarchy, not a rich interactive map; no free-form dashboard grid.
+8. **Contracts** — `packages/shared` empty; no OpenAPI codegen.
+9. **`api_tokens`** — documented as planned only; session cookies are dashboard auth.
+10. **TLS** — terminated at reverse proxy / Tunnel; Compose itself is HTTP on localhost (documented).
+11. **Tests** — Playwright smoke in CI; no full DB integration suite / multi-browser matrix.
+12. **Agent credentials on disk** — plaintext JSON at 0600 by design; host compromise = that host’s agent identity (documented threat model; no machine-key encrypt-at-rest).
 
 ---
 
@@ -126,8 +131,8 @@ See [DEFINITION_OF_DONE.md](./DEFINITION_OF_DONE.md). Most product rows are **do
 ## Operator checklist before shared use
 
 1. Rotate Compose / `.env` secrets; set strong `SESSION_SECRET`, DB password, admin password.
-2. Put API/web behind HTTPS (`COOKIE_SECURE=true`).
+2. Put API/web behind HTTPS (`COOKIE_SECURE=true`) — not raw Compose ports on WAN.
 3. Confirm CDN publishes `SHA256SUMS` with every agent channel binary.
 4. Prefer `pg_dump` of the Postgres volume for DR (Settings backup ≠ full restore of servers/metrics).
 5. Re-run `/healthz` + login smoke after deploy.
-6. Optional: set `ALERT_WEBHOOK_URL` (or `settings.alerts.webhook_url`) for ops notifications.
+6. Optional: set alert webhook in Settings (`alerts.webhook_url`) or `ALERT_WEBHOOK_URL`; optional signing secret under Settings → Webhook signing secret.

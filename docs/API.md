@@ -117,7 +117,11 @@ Sensitive env vars in container detail: **masked by default**; `?reveal_env=1` r
 
 | Method | Path | Notes |
 |--------|------|-------|
-| GET/PATCH | `/settings` | general / metrics / alerts JSON blobs |
+| GET/PATCH | `/settings` | general / metrics / alerts JSON blobs (`alerts.webhook_url`, `alerts.webhook_format`) |
+| GET | `/secrets` | Admin; metadata only (no plaintext) |
+| GET | `/secrets/status` | Admin; `{ configured, alert_signing }` |
+| PUT | `/secrets/:kind/:name` | Admin; body `{ "value": "..." }` — allowlisted `kind=webhook` |
+| DELETE | `/secrets/:kind/:name` | Admin; remove named secret |
 | GET | `/audit-logs` | |
 | GET | `/notifications` | In-app center (active alerts + notable events; per-user dismissals filtered) |
 | POST | `/notifications/clear` | Dismiss all currently visible items for the caller |

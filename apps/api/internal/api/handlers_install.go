@@ -139,8 +139,10 @@ PathExists=/var/lib/fleetdeck/UPDATE_REQUESTED
 [Install]
 WantedBy=multi-user.target
 EOF
+umask 077
 sudo -u fleetdeck /usr/local/bin/fleetdeck-agent -api "$API_URL" -token "$TOKEN" -state-dir /var/lib/fleetdeck -enroll
 chown -R fleetdeck:fleetdeck /var/lib/fleetdeck
+chmod 0700 /var/lib/fleetdeck
 chmod 0600 /var/lib/fleetdeck/credentials.json 2>/dev/null || true
 systemctl daemon-reload
 systemctl enable --now fleetdeck-agent-uninstall.path

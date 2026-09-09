@@ -136,13 +136,13 @@ If a P0 appears during implementation (e.g. confirmed session cookie theft on de
 ### P3.3 Alert scope + notification channels
 
 - ~~Scope rules to server IDs (`scope_type=servers` + `scope_ids`).~~ **Done (2026-09-09).**
-- ~~Optional webhook channel (still local-first).~~ **Done (2026-09-09):** `ALERT_WEBHOOK_URL` or `settings.alerts.webhook_url` on fire/resolve.
-- Email/Discord/Slack still deferred.
+- ~~Optional webhook channel (still local-first).~~ **Done:** `ALERT_WEBHOOK_URL` / Settings `alerts.webhook_url` + Discord/Slack-compatible formatting + optional HMAC secret.
+- Email still deferred.
 
 ### P3.4 Events/audit reliability
 
 - ~~Events page error state.~~
-- Fail loudly on audit insert errors in debug; metrics for dropped audits. **Deferred.**
+- ~~Fail loudly on audit insert errors.~~ **Done:** `CRITICAL:` process log on insert failure. Metrics for dropped audits still deferred.
 
 ### P3.5 OpenAPI / shared contracts
 
@@ -199,12 +199,12 @@ If a P0 appears during implementation (e.g. confirmed session cookie theft on de
 | P1.4 | Alert duration/cooldown | **done** (2026-09-09) |
 | P1.5 | Mandatory update checksums | **done** (2026-09-09) |
 | P1.6 | Agent/web/CI tests | **done** (2026-09-09) — agent allowlist/SHA256/creds; web format+gap unit tests; CI audit fails on high; Playwright smoke + CI e2e job |
-| P2.1 | Secrets at rest / envelope | **done** (2026-09-09) — AES-GCM store + honest docs; no product Put yet |
+| P2.1 | Secrets at rest / envelope | **done** — AES-GCM store + admin PUT/DELETE + Settings signing-secret UI |
 | P2.2 | Metrics ingest batch + backpressure | **done** (2026-09-09) — multi-row INSERT + semaphore; monthly partitions create/drop |
 | P2.3 | Agent durable buffer | **done** (2026-09-09) |
 | P2.4 | Retention safety | **done** (2026-09-09) — DROP aged months + DELETE DEFAULT/aggs |
 | P2.5 | Rate limit durability | **done** (2026-09-09) — CF-Connecting-IP + Postgres buckets |
 | P2.6 | Docs honesty | **done** (2026-09-09) — MONITORING.md, DATABASE.md, ARCHITECTURE/SECURITY/TROUBLESHOOTING |
-| P3.* | UX / scale | **mostly done** (2026-09-09) — topology/a11y/page-state; alert scope+webhook done; OpenAPI/drag-grid deferred |
+| P3.* | UX / scale | **mostly done** — topology/a11y/page-state; alert scope+Discord/Slack webhooks+Settings; audit CRITICAL log; OpenAPI/drag-grid deferred |
 | P4.* | Cleanup | **partial** — api_tokens honesty in DATA_MODEL; GPG/i18n/drag-grid deferred |
-| Ready | Production readiness report | **READY WITH KNOWN LIMITATIONS** — see [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md); goal remains ACTIVE |
+| Ready | Production readiness report | **READY WITH KNOWN LIMITATIONS** — SPOF + DEFAULT DELETE accepted as product limits; goal remains ACTIVE |

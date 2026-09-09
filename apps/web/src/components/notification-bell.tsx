@@ -133,7 +133,7 @@ export function NotificationBell() {
             )}
           </div>
           <div className="px-3 py-2 text-[10px] text-[var(--text-2)]">
-            External email/Discord/Slack/webhooks are optional later — local-only by default.
+            External alerts: configure webhook URL in Settings (Discord/Slack compatible). Local-only by default.
           </div>
         </div>
       )}

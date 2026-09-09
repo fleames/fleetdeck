@@ -9,10 +9,10 @@ Honest tracking against the product goal. **Not complete** until every row is ve
 | Secure agent-based collection | done | Enrollment, hashed secrets, dial-out agent; mandatory update SHA256 |
 | Real metrics (no fake production data) | done | gopsutil + Docker Engine API collectors |
 | Historical retention / aggregation | done | Worker raw→5m→1h; monthly partition create/DROP + DELETE fallback; history API by range |
-| Alerts / events | done | Rules, instances, events UI; duration/cooldown; `scope_type`/`scope_ids`; optional webhook |
+| Alerts / events | done | Rules, instances, events UI; duration/cooldown; `scope_type`/`scope_ids`; Discord/Slack-compatible webhook + Settings |
 | Polished dark-first UX (+ light theme) | mostly | Design tokens, theme toggle, page-state, topology polish, a11y basics; no free-form drag grid |
-| Auth / secrets security | mostly | Argon2id, CSRF, DB-backed login/enroll rate limits, roles, WS session auth, HSTS-when-secure; TLS via reverse proxy; secrets envelope ready, no product Put UI |
-| Export / backup / notifications / self-metrics | done | Settings + API ops; in-app notifications + optional alert webhook; expanded `/healthz` + self-metrics |
+| Auth / secrets security | mostly | Argon2id, CSRF, DB-backed login/enroll rate limits, roles, WS session auth, HSTS-when-secure; TLS via reverse proxy; envelope Put/Delete + Settings signing secret; agent creds 0600 + threat model |
+| Export / backup / notifications / self-metrics | done | Settings + API ops; in-app notifications + webhook channels; expanded `/healthz` + self-metrics |
 | Container actions + env mask/reveal | done | Confirm + audit; agent allowlisted actions |
 | Server compare / capacity notes | done | `/compare`, `POST /servers/compare` |
 | Topology map / dashboard customization | mostly | `/topology` live inventory map + summary tiles; widget show/hide (not free-form drag) |
@@ -25,6 +25,6 @@ Honest tracking against the product goal. **Not complete** until every row is ve
 **Open before calling the goal complete**
 
 1. Optional: GPG-signed `SHA256SUMS` in a tagged release.
-2. Accept or close known limitations in [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md) (single API, DEFAULT-partition DELETE residual, no OpenAPI/`packages/shared`, no drag grid).
+2. Accept or close known limitations in [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md) (single API / SPOF, DEFAULT-partition DELETE residual, no OpenAPI/`packages/shared`, no drag grid, no email). SPOF + DEFAULT residual are documented as accepted product limits for local-first — still keep goal **ACTIVE** until operators formally accept or HA/partition work lands.
 
-**Verdict:** Goal remains **ACTIVE**. Readiness: **READY WITH KNOWN LIMITATIONS** — suitable for local-first / private fleet behind TLS; not claimed fully complete DoD without accepting remaining limitations.
+**Verdict:** Goal remains **ACTIVE**. Readiness: **READY WITH KNOWN LIMITATIONS** — suitable for local-first / private fleet behind TLS; not claimed fully complete DoD / bare READY.

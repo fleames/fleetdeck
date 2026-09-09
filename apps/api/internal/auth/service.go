@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"time"
 
@@ -157,10 +158,15 @@ func (s *Service) ClearSessionCookie(w http.ResponseWriter) {
 	})
 }
 
-func (s *Service) Audit(ctx context.Context, userID *uuid.UUID, action, targetType, targetID, result, ip string, context map[string]any) {
-	_, _ = s.pool.Exec(ctx, `
+func (s *Service) Audit(ctx context.Context, userID *uuid.UUID, action, targetType, targetID, result, ip string, context map[string]any) error {
+	_, err := s.pool.Exec(ctx, `
 		INSERT INTO audit_logs (user_id, action, target_type, target_id, result, ip, context)
 		VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::jsonb, '{}'::jsonb))`,
 		userID, action, targetType, targetID, result, ip, mustJSON(context),
 	)
+	if err != nil {
+		log.Printf("CRITICAL: audit_logs insert failed action=%s target=%s/%s result=%s: %v",
+			action, targetType, targetID, result, err)
+	}
+	return err
 }

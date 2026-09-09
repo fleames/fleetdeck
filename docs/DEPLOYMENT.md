@@ -48,9 +48,11 @@ Restore into an empty database, validate, then cut over — never silently overw
 
 ## TLS (production)
 
-Terminate TLS at a reverse proxy (Caddy, Traefik, nginx). Point `WEB_ORIGIN` and `API_PUBLIC_URL` at the public HTTPS origins, set `COOKIE_SECURE=true`, and use a strong `SESSION_SECRET`.
+Terminate TLS at a reverse proxy (Caddy, Traefik, nginx) or Cloudflare Tunnel. Point `WEB_ORIGIN` and `API_PUBLIC_URL` at the public HTTPS origins, set `COOKIE_SECURE=true`, and use a strong `SESSION_SECRET`.
 
 When `COOKIE_SECURE=true`, the API also emits `Strict-Transport-Security`.
+
+**Local Compose is HTTP by design** (`deploy/docker-compose.yml` exposes API/web on localhost without TLS). Do not expose Compose ports on the public internet. For shared/LAN use, put Caddy/nginx/Tunnel in front — there is no Compose `https` profile sidecar today (optional later); Tunnel via `--profile tunnel` is the supported remote path.
 
 Example Caddy snippet:
 

@@ -38,7 +38,7 @@ func main() {
 
 	hub := realtime.NewHub()
 	srv := api.New(cfg, pool, hub)
-	worker.New(pool, hub, cfg.AgentOfflineAfter, cfg.RawRetentionDays, cfg.Agg5mRetentionDays, cfg.Agg1hRetentionDays, cfg.AlertWebhookURL).Start(ctx)
+	worker.New(pool, hub, cfg.AgentOfflineAfter, cfg.RawRetentionDays, cfg.Agg5mRetentionDays, cfg.Agg1hRetentionDays, cfg.AlertWebhookURL, srv.Secrets()).Start(ctx)
 
 	httpServer := &http.Server{
 		Addr:              cfg.APIAddr,

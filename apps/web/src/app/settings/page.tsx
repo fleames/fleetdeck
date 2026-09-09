@@ -11,7 +11,11 @@ type Settings = {
     agg_5m_retention_days?: number;
     agg_1h_retention_days?: number;
   };
-  alerts?: { defaults_enabled?: boolean };
+  alerts?: {
+    defaults_enabled?: boolean;
+    webhook_url?: string;
+    webhook_format?: "auto" | "json" | "discord" | "slack";
+  };
 };
 
 const fieldClass =
@@ -26,11 +30,18 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [restoreText, setRestoreText] = useState("");
   const [confirmRestore, setConfirmRestore] = useState(false);
+  const [signingSecret, setSigningSecret] = useState("");
+  const [alertSigningConfigured, setAlertSigningConfigured] = useState(false);
 
   async function load() {
     const res = await fetch(`${API_URL}/api/v1/settings`, { credentials: "include", cache: "no-store" });
     if (!res.ok) throw new Error("Could not load settings");
     setSettings(await res.json());
+    const sec = await fetch(`${API_URL}/api/v1/secrets/status`, { credentials: "include", cache: "no-store" });
+    if (sec.ok) {
+      const body = (await sec.json()) as { alert_signing?: boolean };
+      setAlertSigningConfigured(Boolean(body.alert_signing));
+    }
   }
 
   useEffect(() => {
@@ -60,6 +71,40 @@ export default function SettingsPage() {
     setSettings(next);
     applyTheme(next.general?.theme);
     setMsg("Settings saved.");
+  }
+
+  async function saveSigningSecret() {
+    setError(null);
+    setMsg(null);
+    const value = signingSecret.trim();
+    if (!value) {
+      setError("Enter a signing secret before saving.");
+      return;
+    }
+    const res = await apiFetch(`/api/v1/secrets/webhook/alert_signing`, {
+      method: "PUT",
+      body: JSON.stringify({ value }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      setError(body?.error?.message || "Could not store signing secret");
+      return;
+    }
+    setSigningSecret("");
+    setAlertSigningConfigured(true);
+    setMsg("Webhook signing secret stored (envelope-encrypted). Applied to generic JSON webhooks as X-FleetDeck-Signature.");
+  }
+
+  async function clearSigningSecret() {
+    setError(null);
+    setMsg(null);
+    const res = await apiFetch(`/api/v1/secrets/webhook/alert_signing`, { method: "DELETE" });
+    if (!res.ok) {
+      setError("Could not clear signing secret");
+      return;
+    }
+    setAlertSigningConfigured(false);
+    setMsg("Webhook signing secret removed.");
   }
 
   async function downloadExport(kind: string, format: "json" | "csv") {
@@ -141,7 +186,9 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>
-        <p className="mt-1 text-sm text-[var(--text-1)]">Local configuration. Secrets never appear here.</p>
+        <p className="mt-1 text-sm text-[var(--text-1)]">
+          Local configuration. Secret values are write-only (never displayed after save).
+        </p>
       </div>
       {error && (
         <div className="rounded-md border border-[var(--crit)]/40 bg-[var(--crit)]/10 px-3 py-2 text-sm text-[var(--crit)]">
@@ -243,10 +290,86 @@ export default function SettingsPage() {
           are the defaults when settings are unset. Restoring Settings JSON alone does not restore deleted metrics — use Postgres volume /
           <code className="mx-1">pg_dump</code>.
         </p>
+        <label className="block text-xs text-[var(--text-2)]">
+          <span className="mb-1.5 block">Alert webhook URL</span>
+          <input
+            className={fieldClass}
+            type="url"
+            placeholder="https://hooks.slack.com/... or Discord webhook / custom JSON endpoint"
+            value={settings.alerts?.webhook_url ?? ""}
+            onChange={(e) =>
+              setSettings((s) => ({
+                ...s,
+                alerts: { ...s.alerts, webhook_url: e.target.value },
+              }))
+            }
+          />
+        </label>
+        <label className="block text-xs text-[var(--text-2)]">
+          <span className="mb-1.5 block">Webhook format</span>
+          <select
+            className={fieldClass}
+            value={settings.alerts?.webhook_format ?? "auto"}
+            onChange={(e) =>
+              setSettings((s) => ({
+                ...s,
+                alerts: {
+                  ...s.alerts,
+                  webhook_format: e.target.value as "auto" | "json" | "discord" | "slack",
+                },
+              }))
+            }
+          >
+            <option value="auto">Auto (detect Discord/Slack from URL)</option>
+            <option value="json">Generic JSON</option>
+            <option value="discord">Discord embeds</option>
+            <option value="slack">Slack incoming webhook</option>
+          </select>
+        </label>
+        <p className="text-xs text-[var(--text-2)]">
+          Overrides <code className="mx-1">ALERT_WEBHOOK_URL</code> when set. Fire/resolve POSTs use Discord or Slack
+          shaping when auto-detected; otherwise FleetDeck JSON. Email remains deferred.
+        </p>
         <button type="submit" className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm text-white">
           Save
         </button>
       </form>
+
+      <section className="space-y-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-1)] p-5">
+        <h2 className="text-sm font-medium text-[var(--text-0)]">Webhook signing secret</h2>
+        <p className="text-xs text-[var(--text-2)]">
+          Optional HMAC key for generic JSON webhooks (
+          <code className="mx-1">X-FleetDeck-Signature: sha256=…</code>
+          ). Stored in the AES-GCM envelope (
+          <code className="mx-1">secrets</code> table), never returned. Status:{" "}
+          {alertSigningConfigured ? "configured" : "not set"}.
+        </p>
+        <label className="block text-xs text-[var(--text-2)]">
+          <span className="mb-1.5 block">New signing secret</span>
+          <input
+            className={fieldClass}
+            type="password"
+            autoComplete="new-password"
+            value={signingSecret}
+            onChange={(e) => setSigningSecret(e.target.value)}
+            placeholder={alertSigningConfigured ? "•••••••• (enter to rotate)" : "Optional shared secret"}
+          />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className={btnSecondary} onClick={() => void saveSigningSecret()}>
+            Store / rotate
+          </button>
+          {alertSigningConfigured && (
+            <button
+              type="button"
+              className="rounded-md border border-[var(--crit)]/40 px-3 py-1.5 text-xs text-[var(--crit)] hover:bg-[var(--crit)]/10"
+              onClick={() => void clearSigningSecret()}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </section>
 
       <section className="space-y-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-1)] p-5">
         <h2 className="text-sm font-medium text-[var(--text-0)]">Export</h2>
