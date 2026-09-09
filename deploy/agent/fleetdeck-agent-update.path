@@ -1,0 +1,8 @@
+[Unit]
+Description=Watch for FleetDeck agent update request
+
+[Path]
+PathExists=/var/lib/fleetdeck/UPDATE_REQUESTED
+
+[Install]
+WantedBy=multi-user.target

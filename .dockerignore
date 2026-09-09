@@ -1,0 +1,18 @@
+# Build context is the repo root (see docker-compose).
+.git
+**/.git
+**/node_modules
+**/.next
+**/out
+**/dist
+**/bin
+**/*.exe
+**/.env
+**/.env.*
+!**/.env.example
+**/coverage
+**/.turbo
+**/.pnpm-store
+**/tmp
+**/.tmp*
+agent-transcripts

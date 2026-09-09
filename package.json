@@ -1,0 +1,12 @@
+{
+  "name": "fleetdeck",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --dir apps/web dev",
+    "build:web": "pnpm --dir apps/web build",
+    "lint:web": "pnpm --dir apps/web lint",
+    "test:api": "go test ./... -count=1",
+    "build:api": "go build -o bin/fleetdeck-api ./cmd/fleetdeck-api",
+    "build:agent": "go build -o bin/fleetdeck-agent ./cmd/fleetdeck-agent"
+  }
+}
