@@ -148,6 +148,7 @@ EOF
   fi
 
   echo "Enrolling with ${API_URL} …"
+  umask 077
   if ! "$agent_bin" \
     -api "$API_URL" \
     -token "$TOKEN" \
@@ -156,6 +157,7 @@ EOF
     echo "Enrollment failed — is FleetDeck + Cloudflare Tunnel online on your PC?" >&2
     exit 1
   fi
+  chmod 0700 "$state_dir"
   chmod 0600 "${state_dir}/credentials.json" 2>/dev/null || true
 
   cat > "$start_script" <<EOF
@@ -362,6 +364,7 @@ WantedBy=multi-user.target
 EOF
 
   echo "Enrolling with ${API_URL} …"
+  umask 077
   if ! sudo -u fleetdeck /usr/local/bin/fleetdeck-agent \
     -api "$API_URL" \
     -token "$TOKEN" \
@@ -372,6 +375,7 @@ EOF
   fi
 
   chown -R fleetdeck:fleetdeck /var/lib/fleetdeck
+  chmod 0700 /var/lib/fleetdeck
   chmod 0600 /var/lib/fleetdeck/credentials.json 2>/dev/null || true
 
   systemctl daemon-reload

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/realtime"
+	"github.com/fleetdeck/fleetdeck/apps/api/internal/secrets"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -15,6 +16,7 @@ import (
 type Runner struct {
 	pool           *pgxpool.Pool
 	hub            *realtime.Hub
+	secrets        *secrets.Store
 	offlineAfter   time.Duration
 	rawRetention   time.Duration
 	agg5mRetention time.Duration
@@ -22,10 +24,11 @@ type Runner struct {
 	webhookURL     string
 }
 
-func New(pool *pgxpool.Pool, hub *realtime.Hub, offlineAfter time.Duration, rawDays, agg5mDays, agg1hDays int, webhookURL string) *Runner {
+func New(pool *pgxpool.Pool, hub *realtime.Hub, offlineAfter time.Duration, rawDays, agg5mDays, agg1hDays int, webhookURL string, secretsStore *secrets.Store) *Runner {
 	return &Runner{
 		pool:           pool,
 		hub:            hub,
+		secrets:        secretsStore,
 		offlineAfter:   offlineAfter,
 		rawRetention:   time.Duration(rawDays) * 24 * time.Hour,
 		agg5mRetention: time.Duration(agg5mDays) * 24 * time.Hour,

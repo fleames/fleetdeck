@@ -345,15 +345,21 @@ func enroll(apiURL, token, stateDir string) (credentials, error) {
 }
 
 // writeCredentials persists agent credentials with restrictive permissions (dir 0700, file 0600).
+// Chmod after write defeats umask so mode stays 0600 even if the process umask is permissive.
 func writeCredentials(stateDir string, creds credentials) error {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return err
 	}
+	_ = os.Chmod(stateDir, 0o700)
 	b, err := json.MarshalIndent(creds, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(stateDir, "credentials.json"), b, 0o600)
+	path := filepath.Join(stateDir, "credentials.json")
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
 }
 
 func postJSON(url, bearer string, payload any, out any) error {

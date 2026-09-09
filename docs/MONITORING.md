@@ -26,10 +26,19 @@ Settings values override env when ≥ 1.
 
 ## Alerts webhook
 
-Optional JSON POST on `alert.fired` / `alert.resolved`:
+Optional POST on `alert.fired` / `alert.resolved`:
 
-- Env: `ALERT_WEBHOOK_URL`
-- Or settings: `alerts.webhook_url` (overrides env when set)
+| Config | Notes |
+|--------|--------|
+| Env `ALERT_WEBHOOK_URL` | Default target |
+| Settings `alerts.webhook_url` | Overrides env when set (Settings UI) |
+| Settings `alerts.webhook_format` | `auto` (default) \| `json` \| `discord` \| `slack` |
+
+**Formats:** `auto` detects Discord (`discord.com` / `discordapp.com` webhook URLs) and Slack (`hooks.slack.com`) and shapes payloads accordingly; otherwise sends FleetDeck generic JSON (`event`, `severity`, `message`, `ts`, `context`, `source`).
+
+**Signing (optional):** store envelope secret `webhook` / `alert_signing` via Settings or `PUT /api/v1/secrets/webhook/alert_signing`. Generic JSON POSTs include `X-FleetDeck-Signature: sha256=<hmac>`. Not applied to Discord/Slack shaped bodies (those platforms use their own webhook URLs as capability secrets).
+
+Email remains deferred.
 
 ## What is not monitoring theater
 

@@ -227,12 +227,14 @@ PathExists=/var/lib/fleetdeck/UPDATE_REQUESTED
 WantedBy=multi-user.target
 EOF
 echo "Enrolling…"
+umask 077
 if ! sudo -u fleetdeck /usr/local/bin/fleetdeck-agent -api "$API_URL" -token "$TOKEN" -state-dir /var/lib/fleetdeck -enroll; then
   echo "Enrollment failed. The VPS must be able to REACH $API_URL (VPN/Tailscale/tunnel)." >&2
   echo "Installer binary is local; only enrollment/metrics need network to FleetDeck." >&2
   exit 1
 fi
 chown -R fleetdeck:fleetdeck /var/lib/fleetdeck
+chmod 0700 /var/lib/fleetdeck
 chmod 0600 /var/lib/fleetdeck/credentials.json 2>/dev/null || true
 systemctl daemon-reload
 systemctl enable --now fleetdeck-agent-uninstall.path

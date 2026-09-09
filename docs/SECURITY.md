@@ -19,8 +19,21 @@ Security is a first-class requirement. Local-first does not mean lax.
 3. **Dashboard never receives** Docker socket, agent secrets, DB passwords, or raw decryptable secret material.
 4. **Monitoring is read-only by default**; mutations require authz + confirmation + audit.
 5. **Never trust agent payloads** — validate schema, sizes, types, and IDs server-side.
-6. **Secrets at rest** — passwords/agent credentials/enrollment tokens are **hashed** (not reversible). The `secrets` table supports AES-GCM envelope encryption keyed from `SESSION_SECRET` for future app secrets; it is empty until a feature calls Put. Agent `credentials.json` on disk is plaintext with mode 0600.
+6. **Secrets at rest** — passwords/agent credentials/enrollment tokens are **hashed** (not reversible). The `secrets` table holds AES-GCM envelope ciphertext keyed from `SESSION_SECRET`. Admins can PUT/DELETE allowlisted names (`webhook/alert_signing`) via `/api/v1/secrets/...` or Settings; plaintext is never listed. Agent `credentials.json` on disk is **plaintext** with mode **0600** (see threat model below).
 7. **No plaintext passwords** in DB or logs.
+
+## Agent credentials on disk (threat model)
+
+| Asset | Location | Protection |
+|-------|----------|------------|
+| Agent bearer secret | `credentials.json` under state dir (e.g. `/var/lib/fleetdeck`) | File mode **0600**, directory **0700**; installers set `umask 077` before enroll and re-`chmod` after |
+| Same secret in API DB | `agent_credentials.secret_hash` | Argon2id hash only |
+
+**In scope:** another local user reading the file if permissions are wrong; root / same-user compromise on that host.
+
+**Accepted residual:** host compromise as the agent user (or root) yields that host’s agent identity — enough to push metrics/inventory for **that** `server_id` only. Encrypt-at-rest with a machine key is intentionally deferred (heavy ops; does not stop root).
+
+**Out of scope for this file alone:** stopping a fully compromised host OS; use host hardening, separate agent user, and rotate credentials from the panel if theft is suspected.
 
 ## Authentication
 
@@ -91,7 +104,9 @@ For start/stop/restart/pull/remove:
 
 ## Audit
 
-Record at minimum: login failures/success, enrollment, token create/rotate/revoke, alert ack/resolve/silence, settings changes, any management action, backup/restore.
+Record at minimum: login failures/success, enrollment, token create/rotate/revoke, alert ack/resolve/silence, settings changes, secret put/delete, any management action, backup/restore.
+
+Auth-critical inserts (`auth.login`, `auth.bootstrap`, …) log **`CRITICAL:`** to the API process log if the `audit_logs` write fails (fail-safe / loud). Other audits use the same helper. This is not a compliance-grade durable audit bus.
 
 ## Pre-release security review (Phase 8 / DoD)
 
