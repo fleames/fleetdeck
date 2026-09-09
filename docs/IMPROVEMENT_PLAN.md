@@ -3,7 +3,7 @@
 **Started:** 2026-09-09  
 **Source:** [PRODUCTION_AUDIT.md](./PRODUCTION_AUDIT.md)  
 **Constraint:** Do not rewrite the stack. Prefer incremental hardening on Go API/agent + Next.js web + Postgres.  
-**Goal status:** ACTIVE — P0 none; P1–P2 closed; high-value P3 closed; readiness = READY WITH KNOWN LIMITATIONS ([PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md)). Do not mark goal complete until optional DoD items are accepted or closed.
+**Goal status:** COMPLETE — P0 none; P1–P2 closed; high-value P3 closed; readiness = READY WITH KNOWN LIMITATIONS ([PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md)). SPOF + DEFAULT partition residual accepted as local-first product limits; P4 (email, OpenAPI, drag grid, GPG) documented as Future.
 
 This plan ranks work **P0 → P4**. Items list concrete next actions. Implementation is a later phase unless noted as a trivial same-pass fix.
 
@@ -176,7 +176,7 @@ If a P0 appears during implementation (e.g. confirmed session cookie theft on de
 | **4** | P1.5 + P1.6 | Checksums mandatory; agent+web CI tests |
 | **5** | P2 cluster | Secrets story, ingest batch, buffer, docs honesty |
 | **6** | P3 UX + readiness verification | Compose smoke, backup drill, SECURITY_REVIEW re-check |
-| **7** | Release gates | Only then consider marking production goal complete |
+| **7** | Release gates | **Done** — READY WITH KNOWN LIMITATIONS + accepted SPOF/DEFAULT; GOAL_COMPLETE |
 
 ---
 
@@ -185,7 +185,7 @@ If a P0 appears during implementation (e.g. confirmed session cookie theft on de
 - Stack rewrite / replace Next or Go.
 - Forking PulseOps.
 - Implementing all P2–P4 in one pass.
-- Marking the production goal complete.
+- ~~Marking the production goal complete.~~ Done via readiness finalization (accepted limits + Future P4).
 
 ---
 
@@ -207,4 +207,4 @@ If a P0 appears during implementation (e.g. confirmed session cookie theft on de
 | P2.6 | Docs honesty | **done** (2026-09-09) — MONITORING.md, DATABASE.md, ARCHITECTURE/SECURITY/TROUBLESHOOTING |
 | P3.* | UX / scale | **mostly done** — topology/a11y/page-state; alert scope+Discord/Slack webhooks+Settings; audit CRITICAL log; OpenAPI/drag-grid deferred |
 | P4.* | Cleanup | **partial** — api_tokens honesty in DATA_MODEL; GPG/i18n/drag-grid deferred |
-| Ready | Production readiness report | **READY WITH KNOWN LIMITATIONS** — SPOF + DEFAULT DELETE accepted as product limits; goal remains ACTIVE |
+| Ready | Production readiness report | **READY WITH KNOWN LIMITATIONS** — SPOF + DEFAULT DELETE accepted; P4 → Future; **GOAL_COMPLETE=yes** |
