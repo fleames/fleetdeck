@@ -14,6 +14,7 @@ import (
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/httpx"
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/realtime"
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/secrets"
+	"github.com/fleetdeck/fleetdeck/apps/api/internal/worker"
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -41,6 +42,7 @@ func New(cfg config.Config, pool *pgxpool.Pool, hub *realtime.Hub) *Server {
 		hub:       hub,
 		ingestSem: make(chan struct{}, maxConcurrentIngest),
 	}
+	initRateLimiters(pool)
 	store, err := secrets.NewStore(pool, cfg.SessionSecret)
 	if err != nil {
 		log.Printf("secrets store: %v (envelope Put/Get unavailable)", err)
@@ -251,7 +253,39 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 			map[string]any{"technical": err.Error()})
 		return
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"status": "ok"})
+
+	var agentsOnline, serversOnline, rawPoints int
+	_ = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM agents WHERE status='online'`).Scan(&agentsOnline)
+	_ = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM servers WHERE status='online'`).Scan(&serversOnline)
+	_ = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM server_metrics_raw WHERE ts > now() - interval '1 hour'`).Scan(&rawPoints)
+
+	ws := worker.Snapshot()
+	workerOut := map[string]any{}
+	if !ws.LastRetainAt.IsZero() {
+		workerOut["last_retain_at"] = ws.LastRetainAt
+	}
+	if !ws.LastAlertsAt.IsZero() {
+		workerOut["last_alerts_at"] = ws.LastAlertsAt
+	}
+	if !ws.LastOfflineAt.IsZero() {
+		workerOut["last_offline_at"] = ws.LastOfflineAt
+	}
+	if !ws.LastPartAt.IsZero() {
+		workerOut["last_partitions_at"] = ws.LastPartAt
+	}
+
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"status":   "ok",
+		"database": "ok",
+		"fleet": map[string]any{
+			"online_agents":  agentsOnline,
+			"online_servers": serversOnline,
+		},
+		"ingest": map[string]any{
+			"server_metric_points_last_hour": rawPoints,
+		},
+		"worker": workerOut,
+	})
 }
 
 func (s *Server) handleRealtime(w http.ResponseWriter, r *http.Request) {

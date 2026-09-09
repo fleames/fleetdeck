@@ -723,7 +723,7 @@ func (s *Server) handleCreateEnrollmentToken(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) handleAgentEnroll(w http.ResponseWriter, r *http.Request) {
-	if !enrollLimiter.allow(clientIP(r)) {
+	if enrollLimiter != nil && !enrollLimiter.allow(r.Context(), clientIP(r)) {
 		httpx.Error(w, http.StatusTooManyRequests, "rate_limited", "Too many enrollment attempts. Try again shortly.")
 		return
 	}

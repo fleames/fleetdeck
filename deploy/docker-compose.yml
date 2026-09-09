@@ -36,6 +36,7 @@ services:
       RELAY_URL: ${RELAY_URL:-}
       RELAY_TOKEN: ${RELAY_TOKEN:-}
       RELAY_LOCAL_URL: ${RELAY_LOCAL_URL:-http://127.0.0.1:8080}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
     ports:
       - "8080:8080"
     depends_on:

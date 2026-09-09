@@ -36,6 +36,7 @@ export function AuthGate({ status, onDone }: { status: AuthStatus; onDone: () =>
     <div className="flex min-h-screen items-center justify-center bg-[var(--bg-0)] px-6">
       <form
         onSubmit={submit}
+        data-testid="auth-form"
         className="w-full max-w-md rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-1)] p-7 shadow-[var(--shadow)]"
       >
         <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--text-2)]">
@@ -96,6 +97,7 @@ export function AuthGate({ status, onDone }: { status: AuthStatus; onDone: () =>
         <button
           type="submit"
           disabled={busy}
+          data-testid="auth-submit"
           className="mt-6 w-full rounded-md bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-60"
         >
           {busy ? "Working…" : bootstrap ? "Create account" : "Sign in"}

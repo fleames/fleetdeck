@@ -86,7 +86,7 @@ If a P0 appears during implementation (e.g. confirmed session cookie theft on de
 ### P2.2 Metrics ingest performance
 
 - ~~Batch `COPY` / multi-row INSERT for host + container samples.~~
-- Consider BRIN on `ts` or real monthly partitions + partition create job. **Deferred.**
+- ~~Consider BRIN on `ts` or real monthly partitions + partition create job.~~ **Done (2026-09-09):** monthly CREATE for current/next month + DROP of fully-aged named partitions; DELETE remains for DEFAULT/partial months. BRIN still optional.
 - **Done (2026-09-09):** multi-row INSERT chunks + concurrent ingest semaphore (503 backpressure).
 
 ### P2.3 Agent durable buffer
@@ -97,13 +97,13 @@ If a P0 appears during implementation (e.g. confirmed session cookie theft on de
 
 ### P2.4 Retention safety
 
-- Partitioned drop vs bulk DELETE on DEFAULT. **Deferred** (DELETE documented; still runs hourly for raw/5m/1h).
+- ~~Partitioned drop vs bulk DELETE on DEFAULT.~~ **Done (hybrid 2026-09-09):** ensure monthly partitions; DROP fully-aged months; DELETE for DEFAULT + aggs.
 - ~~Retain 1h table; document restore = `pg_dump` volume, not Settings JSON alone.~~
 - **Done (2026-09-09):** Settings retention wired into worker; MONITORING/DATABASE honesty.
 
 ### P2.5 Rate limit durability
 
-- Persist or share login/enroll limiters if API is multi-instance later. **Deferred.**
+- ~~Persist or share login/enroll limiters if API is multi-instance later.~~ **Done (2026-09-09):** `rate_limit_buckets` table + memory fallback. Redis not required for single/small multi-API.
 - ~~Bind to CF-Connecting-IP when behind Tunnel.~~ **Done (2026-09-09).**
 
 ### P2.6 Docs honesty pass
@@ -135,8 +135,9 @@ If a P0 appears during implementation (e.g. confirmed session cookie theft on de
 
 ### P3.3 Alert scope + notification channels
 
-- Scope rules to server labels/IDs. **Deferred.**
-- Optional webhook channel (still local-first). **Deferred.**
+- ~~Scope rules to server IDs (`scope_type=servers` + `scope_ids`).~~ **Done (2026-09-09).**
+- ~~Optional webhook channel (still local-first).~~ **Done (2026-09-09):** `ALERT_WEBHOOK_URL` or `settings.alerts.webhook_url` on fire/resolve.
+- Email/Discord/Slack still deferred.
 
 ### P3.4 Events/audit reliability
 
@@ -197,13 +198,13 @@ If a P0 appears during implementation (e.g. confirmed session cookie theft on de
 | P1.3 | Metrics history + 1h pipeline | **done** (2026-09-09) |
 | P1.4 | Alert duration/cooldown | **done** (2026-09-09) |
 | P1.5 | Mandatory update checksums | **done** (2026-09-09) |
-| P1.6 | Agent/web/CI tests | **done** (2026-09-09) — agent allowlist/SHA256/creds; web format+gap unit tests; CI audit fails on high; Playwright E2E still optional |
+| P1.6 | Agent/web/CI tests | **done** (2026-09-09) — agent allowlist/SHA256/creds; web format+gap unit tests; CI audit fails on high; Playwright smoke + CI e2e job |
 | P2.1 | Secrets at rest / envelope | **done** (2026-09-09) — AES-GCM store + honest docs; no product Put yet |
-| P2.2 | Metrics ingest batch + backpressure | **done** (2026-09-09) — multi-row INSERT + semaphore; BRIN/partitions deferred |
+| P2.2 | Metrics ingest batch + backpressure | **done** (2026-09-09) — multi-row INSERT + semaphore; monthly partitions create/drop |
 | P2.3 | Agent durable buffer | **done** (2026-09-09) |
-| P2.4 | Retention safety | **partial** — Settings→worker wired; DELETE (not DROP PARTITION) documented |
-| P2.5 | Rate limit durability | **partial** — CF-Connecting-IP done; shared/persist deferred |
+| P2.4 | Retention safety | **done** (2026-09-09) — DROP aged months + DELETE DEFAULT/aggs |
+| P2.5 | Rate limit durability | **done** (2026-09-09) — CF-Connecting-IP + Postgres buckets |
 | P2.6 | Docs honesty | **done** (2026-09-09) — MONITORING.md, DATABASE.md, ARCHITECTURE/SECURITY/TROUBLESHOOTING |
-| P3.* | UX / scale | **mostly done** (2026-09-09) — topology polish, PlaceholderPage removed, a11y basics, page-state consistency; alert scope/webhooks/OpenAPI/drag-grid deferred |
+| P3.* | UX / scale | **mostly done** (2026-09-09) — topology/a11y/page-state; alert scope+webhook done; OpenAPI/drag-grid deferred |
 | P4.* | Cleanup | **partial** — api_tokens honesty in DATA_MODEL; GPG/i18n/drag-grid deferred |
 | Ready | Production readiness report | **READY WITH KNOWN LIMITATIONS** — see [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md); goal remains ACTIVE |

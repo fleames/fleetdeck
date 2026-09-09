@@ -8,8 +8,8 @@ Status as of hardening + CI pass. Items marked **done** have implementing code +
 | Authz roles on mutating routes | **done** | `requireRole(admin,operator)` for server create/remove, alert ack/resolve/silence, container actions, tokens; admin-only settings/users/backup; viewers read-only |
 | Authenticated realtime WebSocket | **done** | Session cookie required; empty Origin rejected when `COOKIE_SECURE=true` |
 | Unauthenticated fleet reads blocked | **done** | Fleet routes use `requireUser` |
-| Login rate limit + failed login audit | **done** | `loginLimiter`, audit `auth.login` failed |
-| Enrollment rate limit | **done** | `enrollLimiter` on `/agent/v1/enroll` |
+| Login rate limit + failed login audit | **done** | DB `rate_limit_buckets` (+ memory fallback), audit `auth.login` failed |
+| Enrollment rate limit | **done** | Same shared limiter on `/agent/v1/enroll` |
 | Agent body size limits | **done** | `maxBody` on agent POST routes |
 | JSON decode size cap | **done** | `httpx.Decode` LimitReader 1 MiB |
 | Management confirm + audit | **done** | `confirm=true` + audit on container actions |

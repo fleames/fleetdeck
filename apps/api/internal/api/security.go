@@ -56,9 +56,6 @@ func clientIP(r *http.Request) string {
 	return host
 }
 
-var loginLimiter = newRateLimiter(20, time.Minute)
-var enrollLimiter = newRateLimiter(30, time.Minute)
-
 func roleAllowed(role string, roles ...string) bool {
 	for _, r := range roles {
 		if role == r {

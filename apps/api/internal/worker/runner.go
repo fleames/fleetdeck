@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/realtime"
@@ -18,9 +19,10 @@ type Runner struct {
 	rawRetention   time.Duration
 	agg5mRetention time.Duration
 	agg1hRetention time.Duration
+	webhookURL     string
 }
 
-func New(pool *pgxpool.Pool, hub *realtime.Hub, offlineAfter time.Duration, rawDays, agg5mDays, agg1hDays int) *Runner {
+func New(pool *pgxpool.Pool, hub *realtime.Hub, offlineAfter time.Duration, rawDays, agg5mDays, agg1hDays int, webhookURL string) *Runner {
 	return &Runner{
 		pool:           pool,
 		hub:            hub,
@@ -28,14 +30,26 @@ func New(pool *pgxpool.Pool, hub *realtime.Hub, offlineAfter time.Duration, rawD
 		rawRetention:   time.Duration(rawDays) * 24 * time.Hour,
 		agg5mRetention: time.Duration(agg5mDays) * 24 * time.Hour,
 		agg1hRetention: time.Duration(agg1hDays) * 24 * time.Hour,
+		webhookURL:     strings.TrimSpace(webhookURL),
 	}
 }
 
 func (r *Runner) Start(ctx context.Context) {
-	go r.loop(ctx, 15*time.Second, r.markOffline)
-	go r.loop(ctx, 20*time.Second, r.evaluateAlerts)
+	go r.loop(ctx, 15*time.Second, func(c context.Context) {
+		r.markOffline(c)
+		markWorker("offline")
+	})
+	go r.loop(ctx, 20*time.Second, func(c context.Context) {
+		r.evaluateAlerts(c)
+		markWorker("alerts")
+	})
 	go r.loop(ctx, time.Hour, r.retain)
+	go r.loop(ctx, 6*time.Hour, func(c context.Context) {
+		r.ensureMetricsPartitions(c)
+		markWorker("partitions")
+	})
 	go r.ensureDefaultRules(ctx)
+	go r.ensureMetricsPartitions(ctx)
 }
 
 func (r *Runner) loop(ctx context.Context, every time.Duration, fn func(context.Context)) {
@@ -108,13 +122,16 @@ func (r *Runner) ensureDefaultRules(ctx context.Context) {
 type alertRule struct {
 	UUID                                 uuid.UUID
 	Name, Severity, Metric, Operator     string
+	ScopeType                            string
+	ScopeIDs                             []uuid.UUID
 	Threshold                            float64
 	Duration, Cooldown                   int
 }
 
 func (r *Runner) evaluateAlerts(ctx context.Context) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, name, severity, metric, operator, threshold, duration_seconds, cooldown_seconds
+		SELECT id, name, severity, metric, operator, threshold, duration_seconds, cooldown_seconds,
+		       COALESCE(scope_type, 'all'), COALESCE(scope_ids, '[]'::jsonb)
 		FROM alert_rules WHERE enabled=true`)
 	if err != nil {
 		return
@@ -124,9 +141,11 @@ func (r *Runner) evaluateAlerts(ctx context.Context) {
 	rules := make([]alertRule, 0)
 	for rows.Next() {
 		var rr alertRule
-		if err := rows.Scan(&rr.UUID, &rr.Name, &rr.Severity, &rr.Metric, &rr.Operator, &rr.Threshold, &rr.Duration, &rr.Cooldown); err != nil {
+		var scopeRaw []byte
+		if err := rows.Scan(&rr.UUID, &rr.Name, &rr.Severity, &rr.Metric, &rr.Operator, &rr.Threshold, &rr.Duration, &rr.Cooldown, &rr.ScopeType, &scopeRaw); err != nil {
 			continue
 		}
+		rr.ScopeIDs = parseScopeIDs(scopeRaw)
 		rules = append(rules, rr)
 	}
 
@@ -229,6 +248,9 @@ func (r *Runner) evalHostThreshold(ctx context.Context, rule alertRule) bool {
 		if err := servers.Scan(&serverID, &serverName); err != nil {
 			continue
 		}
+		if !ServerInScope(rule.ScopeType, rule.ScopeIDs, serverID) {
+			continue
+		}
 
 		metricExpr := hostMetricSQL(rule.Metric)
 		if metricExpr == "" {
@@ -308,6 +330,9 @@ func (r *Runner) evalOffline(ctx context.Context, rule alertRule) bool {
 		if err := rows.Scan(&id, &n); err != nil {
 			continue
 		}
+		if !ServerInScope(rule.ScopeType, rule.ScopeIDs, id) {
+			continue
+		}
 		if r.upsertActiveAlert(ctx, rule.UUID, rule.Severity, &id, nil, rule.Name+": "+n, map[string]any{"server": n}, rule.Cooldown) {
 			changed = true
 		}
@@ -341,6 +366,9 @@ func (r *Runner) evalUnhealthyContainers(ctx context.Context, rule alertRule) bo
 		var n string
 		var count float64
 		if err := rows.Scan(&id, &n, &count); err != nil {
+			continue
+		}
+		if !ServerInScope(rule.ScopeType, rule.ScopeIDs, id) {
 			continue
 		}
 		if compare(rule.Operator, count, rule.Threshold) {
@@ -402,6 +430,7 @@ func (r *Runner) upsertActiveAlert(ctx context.Context, ruleID uuid.UUID, severi
 		INSERT INTO infrastructure_events (kind, severity, server_id, message, context)
 		VALUES ('alert.fired', $1, $2, $3, COALESCE($4::jsonb,'{}'::jsonb))`,
 		severity, serverID, message, mustJSON(contextMap))
+	r.notifyWebhook(ctx, "alert.fired", severity, serverID, message, contextMap)
 	return true
 }
 
@@ -415,6 +444,7 @@ func (r *Runner) resolveAlert(ctx context.Context, ruleID uuid.UUID, serverID *u
 		_, _ = r.pool.Exec(ctx, `
 			INSERT INTO infrastructure_events (kind, severity, server_id, message)
 			VALUES ('alert.resolved', 'info', $1, $2)`, serverID, message)
+		r.notifyWebhook(ctx, "alert.resolved", "info", serverID, message, map[string]any{"rule_id": ruleID.String()})
 	}
 }
 
@@ -423,6 +453,11 @@ func (r *Runner) retain(ctx context.Context) {
 	rawCut := time.Now().UTC().Add(-time.Duration(rawDays) * 24 * time.Hour)
 	agg5mCut := time.Now().UTC().Add(-time.Duration(agg5mDays) * 24 * time.Hour)
 	agg1hCut := time.Now().UTC().Add(-time.Duration(agg1hDays) * 24 * time.Hour)
+
+	// Prefer DROP of fully-aged monthly partitions; DELETE covers DEFAULT + partial months + aggs.
+	r.ensureMetricsPartitions(ctx)
+	r.dropAgedRawPartitions(ctx, rawCut)
+
 	if _, err := r.pool.Exec(ctx, `DELETE FROM server_metrics_raw WHERE ts < $1`, rawCut); err != nil {
 		log.Printf("retain server_metrics_raw: %v", err)
 	}
@@ -435,6 +470,8 @@ func (r *Runner) retain(ctx context.Context) {
 	if _, err := r.pool.Exec(ctx, `DELETE FROM server_metrics_1h WHERE bucket < $1`, agg1hCut); err != nil {
 		log.Printf("retain server_metrics_1h: %v", err)
 	}
+	markWorker("retain")
+	markWorker("partitions")
 	// downsample: insert 5m aggregates for recent raw not yet aggregated
 	_, _ = r.pool.Exec(ctx, `
 		INSERT INTO server_metrics_5m (bucket, server_id, cpu_pct_avg, cpu_pct_max, mem_used_bytes_avg, mem_used_bytes_max, disk_used_bytes_avg, net_rx_bps_avg, net_tx_bps_avg, samples)
@@ -483,7 +520,7 @@ func (r *Runner) retain(ctx context.Context) {
 }
 
 // retentionDays prefers Settings UI values when present; falls back to env-derived Runner fields.
-// Note: metrics live on a DEFAULT partition today — retention uses DELETE, not DROP PARTITION.
+// Raw retention: DROP fully-aged monthly partitions when present, plus DELETE for DEFAULT/partial months.
 func (r *Runner) retentionDays(ctx context.Context) (raw, agg5m, agg1h int) {
 	raw = int(r.rawRetention / (24 * time.Hour))
 	agg5m = int(r.agg5mRetention / (24 * time.Hour))

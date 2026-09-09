@@ -154,7 +154,7 @@ Store avg/max/min/p95 as needed (start with avg + max).
 | 5-minute aggregates | 30 days |
 | 1-hour aggregates | 1 year |
 
-Worker runs hourly: DELETE expired rows (DEFAULT partition; not DROP PARTITION yet) then downsample raw→5m and 5m→1h. Settings `metrics.*_retention_days` override env when set. Downsample is idempotent via ON CONFLICT. See [MONITORING.md](./MONITORING.md) / [DATABASE.md](./DATABASE.md).
+Worker runs hourly: ensure monthly raw partitions; DROP fully-aged named months; DELETE expired rows on DEFAULT + 5m/1h; then downsample raw→5m and 5m→1h. Settings `metrics.*_retention_days` override env when set. Downsample is idempotent via ON CONFLICT. See [MONITORING.md](./MONITORING.md) / [DATABASE.md](./DATABASE.md).
 
 ---
 
