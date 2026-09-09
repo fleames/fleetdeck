@@ -1,0 +1,7 @@
+[Unit]
+Description=FleetDeck agent update (oneshot)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/fleetdeck/update

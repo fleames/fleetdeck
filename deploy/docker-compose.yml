@@ -1,0 +1,79 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fleetdeck}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fleetdeck_dev_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-fleetdeck}
+    ports:
+      - "5433:5432"
+    volumes:
+      - fleetdeck_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fleetdeck} -d ${POSTGRES_DB:-fleetdeck}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-fleetdeck}:${POSTGRES_PASSWORD:-fleetdeck_dev_change_me}@db:5432/${POSTGRES_DB:-fleetdeck}?sslmode=disable
+      API_ADDR: ":8080"
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-https://agents.tarkovbot.com}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      AGENT_CDN_BASE: ${AGENT_CDN_BASE:-https://cdn.tarkovbot.com/fleetdeck}
+      AGENT_CDN_CHANNEL: ${AGENT_CDN_CHANNEL:-latest}
+      AGENT_VERSION: ${AGENT_VERSION:-0.4.2-dev}
+      # Optional legacy custom relay (leave empty when using Cloudflare Tunnel)
+      RELAY_URL: ${RELAY_URL:-}
+      RELAY_TOKEN: ${RELAY_TOKEN:-}
+      RELAY_LOCAL_URL: ${RELAY_LOCAL_URL:-http://127.0.0.1:8080}
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Cloudflare Tunnel — token written by scripts/setup-cloudflare-tunnel.ps1
+  # Started via: .\scripts\start.ps1 (passes --env-file <repo>/.env for interpolation).
+  # cloudflared reads TUNNEL_TOKEN; avoid CLI --token so blank host interpolation cannot break the flag.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    command: ["tunnel", "--no-autoupdate", "run"]
+    depends_on:
+      - api
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        # Empty = browser uses same-origin /api (rewritten to API_INTERNAL_URL).
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8080}
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8080}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  fleetdeck_pg:

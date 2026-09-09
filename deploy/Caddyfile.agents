@@ -1,0 +1,11 @@
+# LEGACY — prefer Cloudflare Tunnel (see docs/REMOTE_AGENTS.md).
+# Public agent relay — terminate TLS at Caddy on your CDN/VPS host.
+#
+# DNS: agents.tarkovbot.com → this host
+# Compose: docker compose -f deploy/docker-compose.relay.yml up -d --build
+# Then reverse-proxy :8090 here.
+
+agents.tarkovbot.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:8090
+}

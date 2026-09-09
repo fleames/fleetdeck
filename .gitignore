@@ -1,0 +1,45 @@
+# Dependencies and secrets
+node_modules/
+.next/
+dist/
+build/
+bin/
+*.exe
+coverage/
+.turbo/
+.venv/
+__pycache__/
+
+# Env / secrets
+.env
+.env.relay
+.env.local
+.env.*.local
+*.pem
+*.key
+credentials*
+!**/.env.example
+
+# Data / runtime
+data/
+*.db
+*.duckdb
+*.sqlite
+*.wal
+*.log
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Agent local state
+.fleetdeck/
+.fleetdeck-agent/
+
+# Local scratch / screenshot tooling
+.tmp*/
+.tmp-*
+*.tmp

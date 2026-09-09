@@ -1,0 +1,24 @@
+FROM node:24-alpine AS build
+WORKDIR /app
+COPY apps/web/package.json apps/web/pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile
+COPY apps/web/ ./
+# Empty NEXT_PUBLIC_API_URL → same-origin /api via Next rewrites (session cookies stick on refresh).
+ARG NEXT_PUBLIC_API_URL=
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG API_INTERNAL_URL=http://api:8080
+ENV API_INTERNAL_URL=$API_INTERNAL_URL
+RUN pnpm build
+
+FROM node:24-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+# Rewrites are baked at build time from API_INTERNAL_URL; keep env for clarity.
+ARG API_INTERNAL_URL=http://api:8080
+ENV API_INTERNAL_URL=$API_INTERNAL_URL
+COPY --from=build /app/.next/standalone ./
+COPY --from=build /app/.next/static ./.next/static
+COPY --from=build /app/public ./public
+EXPOSE 3000
+USER node
+CMD ["node", "server.js"]

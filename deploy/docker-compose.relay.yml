@@ -1,0 +1,15 @@
+# LEGACY — prefer Cloudflare Tunnel (docs/REMOTE_AGENTS.md).
+# Deploy on the public host only if not using cloudflared from home.
+# Put RELAY_TOKEN in .env.relay (same value as home FleetDeck .env).
+services:
+  relay:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.relay
+    restart: unless-stopped
+    env_file:
+      - ../.env.relay
+    environment:
+      RELAY_ADDR: ":8090"
+    ports:
+      - "8090:8090"

@@ -1,0 +1,8 @@
+[Unit]
+Description=Watch for FleetDeck agent uninstall request
+
+[Path]
+PathExists=/var/lib/fleetdeck/UNINSTALL_REQUESTED
+
+[Install]
+WantedBy=multi-user.target
