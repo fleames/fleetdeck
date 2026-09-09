@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fleetdeck/fleetdeck/apps/agent/internal/buffer"
 	"github.com/fleetdeck/fleetdeck/apps/agent/internal/collect"
 )
 
@@ -93,11 +94,12 @@ func main() {
 
 	fmt.Printf("FleetDeck agent %s reporting to %s every %s\n", agentVersion, creds.APIURL, interval.String())
 	ctx := context.Background()
+	spool := &buffer.Spool{Dir: *stateDir}
 	// Inventory first (host identity), then metrics — so a slow Docker stats path cannot block identity updates.
 	if err := reportInventory(ctx, creds); err != nil {
 		fmt.Fprintf(os.Stderr, "inventory: %v\n", err)
 	}
-	netPrev = reportOnce(ctx, creds, netPrev)
+	netPrev = reportOnce(ctx, creds, netPrev, spool)
 	pollCommands(ctx, creds)
 
 	for {
@@ -106,7 +108,7 @@ func main() {
 			fmt.Println("shutting down")
 			return
 		case <-ticker.C:
-			netPrev = reportOnce(ctx, creds, netPrev)
+			netPrev = reportOnce(ctx, creds, netPrev, spool)
 		case <-invTicker.C:
 			if err := reportInventory(ctx, creds); err != nil {
 				fmt.Fprintf(os.Stderr, "inventory: %v\n", err)
@@ -117,7 +119,7 @@ func main() {
 	}
 }
 
-func reportOnce(ctx context.Context, creds credentials, netPrev *collect.NetCounter) *collect.NetCounter {
+func reportOnce(ctx context.Context, creds credentials, netPrev *collect.NetCounter, spool *buffer.Spool) *collect.NetCounter {
 	sample, next, err := collect.SampleHost(ctx, netPrev)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "host sample: %v\n", err)
@@ -134,15 +136,38 @@ func reportOnce(ctx context.Context, creds credentials, netPrev *collect.NetCoun
 		"host":           []collect.HostSample{sample},
 		"containers":     containerSamples,
 	}
-	if err := postJSON(creds.APIURL+"/agent/v1/metrics", creds.PublicID+":"+creds.Secret, payload, nil); err != nil {
-		fmt.Fprintf(os.Stderr, "metrics: %v\n", err)
+	metricsURL := creds.APIURL + "/agent/v1/metrics"
+	bearer := creds.PublicID + ":" + creds.Secret
+	if err := postJSON(metricsURL, bearer, payload, nil); err != nil {
+		fmt.Fprintf(os.Stderr, "metrics: %v (spooling)\n", err)
+		if spool != nil {
+			if serr := spool.Append(payload); serr != nil {
+				fmt.Fprintf(os.Stderr, "metrics spool: %v\n", serr)
+			}
+		}
+	} else if spool != nil {
+		if ferr := spool.FlushAll(func(raw json.RawMessage) error {
+			var buffered map[string]any
+			if err := json.Unmarshal(raw, &buffered); err != nil {
+				return err
+			}
+			return postJSON(metricsURL, bearer, buffered, nil)
+		}); ferr != nil {
+			fmt.Fprintf(os.Stderr, "metrics flush: %v\n", ferr)
+		}
 	}
 	docker := collect.CollectDocker(ctx)
 	healthy := !docker.Available || docker.DaemonHealthy
-	if err := postJSON(creds.APIURL+"/agent/v1/heartbeat", creds.PublicID+":"+creds.Secret, map[string]any{
+	hb := map[string]any{
 		"agent_version":  agentVersion,
 		"docker_healthy": healthy,
-	}, nil); err != nil {
+	}
+	if spool != nil {
+		n, age := spool.Stats()
+		hb["buffered_samples"] = n
+		hb["oldest_buffer_age_sec"] = age
+	}
+	if err := postJSON(creds.APIURL+"/agent/v1/heartbeat", bearer, hb, nil); err != nil {
 		fmt.Fprintf(os.Stderr, "heartbeat: %v\n", err)
 	}
 	return next
@@ -313,14 +338,22 @@ func enroll(apiURL, token, stateDir string) (credentials, error) {
 		ServerID: resp.ServerID,
 		AgentID:  resp.AgentID,
 	}
-	if err := os.MkdirAll(stateDir, 0o700); err != nil {
-		return credentials{}, err
-	}
-	b, _ := json.MarshalIndent(creds, "", "  ")
-	if err := os.WriteFile(filepath.Join(stateDir, "credentials.json"), b, 0o600); err != nil {
+	if err := writeCredentials(stateDir, creds); err != nil {
 		return credentials{}, err
 	}
 	return creds, nil
+}
+
+// writeCredentials persists agent credentials with restrictive permissions (dir 0700, file 0600).
+func writeCredentials(stateDir string, creds credentials) error {
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(creds, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(stateDir, "credentials.json"), b, 0o600)
 }
 
 func postJSON(url, bearer string, payload any, out any) error {

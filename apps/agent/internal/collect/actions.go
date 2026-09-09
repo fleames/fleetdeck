@@ -9,23 +9,29 @@ import (
 	"strings"
 )
 
-// ContainerAction runs a Docker Engine lifecycle action against a container.
-func ContainerAction(ctx context.Context, containerID, action string) error {
+func containerActionPath(containerID, action string) (string, error) {
 	action = strings.ToLower(action)
-	path := ""
 	switch action {
 	case "start":
-		path = "/containers/" + containerID + "/start"
+		return "/containers/" + containerID + "/start", nil
 	case "stop":
-		path = "/containers/" + containerID + "/stop?t=10"
+		return "/containers/" + containerID + "/stop?t=10", nil
 	case "restart":
-		path = "/containers/" + containerID + "/restart?t=10"
+		return "/containers/" + containerID + "/restart?t=10", nil
 	case "pause":
-		path = "/containers/" + containerID + "/pause"
+		return "/containers/" + containerID + "/pause", nil
 	case "unpause":
-		path = "/containers/" + containerID + "/unpause"
+		return "/containers/" + containerID + "/unpause", nil
 	default:
-		return fmt.Errorf("unsupported action %q", action)
+		return "", fmt.Errorf("unsupported action %q", action)
+	}
+}
+
+// ContainerAction runs a Docker Engine lifecycle action against a container.
+func ContainerAction(ctx context.Context, containerID, action string) error {
+	path, err := containerActionPath(containerID, action)
+	if err != nil {
+		return err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://docker"+path, nil)
 	if err != nil {

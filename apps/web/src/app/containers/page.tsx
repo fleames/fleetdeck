@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { StatusPill } from "@/components/status-pill";
 import { useRealtime } from "@/lib/realtime";
+import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/page-state";
 
 type Container = {
   id: string;
@@ -20,18 +22,42 @@ type Container = {
   last_seen_at: string;
 };
 
+type Filter = "all" | "running" | "stopped" | "unhealthy";
+
+function parseFilter(raw: string | null): Filter {
+  if (raw === "running" || raw === "stopped" || raw === "unhealthy") return raw;
+  return "all";
+}
+
 export default function ContainersPage() {
+  return (
+    <Suspense fallback={<LoadingBlock label="Loading containers" />}>
+      <ContainersPageInner />
+    </Suspense>
+  );
+}
+
+function ContainersPageInner() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [rows, setRows] = useState<Container[]>([]);
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<"all" | "running" | "stopped" | "unhealthy">("all");
+  const filter = parseFilter(searchParams.get("filter"));
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback((opts?: { soft?: boolean }) => {
     api
       .containers()
-      .then((res) => setRows(res.data))
+      .then((res) => {
+        setRows(res.data);
+        setError(null);
+      })
       .catch((e) => {
         if (!opts?.soft) setError(e instanceof Error ? e.message : "Failed to load");
+      })
+      .finally(() => {
+        if (!opts?.soft) setLoading(false);
       });
   }, []);
 
@@ -47,6 +73,14 @@ export default function ContainersPage() {
   useRealtime((type) => {
     if (type === "docker.updated" || type === "servers.updated") load({ soft: true });
   });
+
+  function setFilter(next: Filter) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "all") params.delete("filter");
+    else params.set("filter", next);
+    const qs = params.toString();
+    router.replace(qs ? `/containers?${qs}` : "/containers");
+  }
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -85,7 +119,7 @@ export default function ContainersPage() {
         />
         <select
           value={filter}
-          onChange={(e) => setFilter(e.target.value as typeof filter)}
+          onChange={(e) => setFilter(e.target.value as Filter)}
           className="rounded-md border border-[var(--border)] bg-[var(--bg-2)] px-3 py-2 text-sm"
         >
           <option value="all">All</option>
@@ -95,16 +129,14 @@ export default function ContainersPage() {
         </select>
       </div>
 
-      {error && (
-        <div className="rounded-md border border-[var(--crit)]/40 bg-[var(--crit)]/10 px-3 py-2 text-sm text-[var(--crit)]">
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner message={error} />}
 
-      {filtered.length === 0 ? (
-        <div className="rounded-[var(--radius)] border border-dashed border-[var(--border-strong)] px-6 py-12 text-center text-sm text-[var(--text-1)]">
+      {loading && rows.length === 0 && !error ? (
+        <LoadingBlock label="Loading containers" />
+      ) : filtered.length === 0 ? (
+        <EmptyBlock>
           {rows.length === 0 ? "No containers reported yet." : "No containers match this filter."}
-        </div>
+        </EmptyBlock>
       ) : (
         <div className="overflow-hidden rounded-[var(--radius)] border border-[var(--border)]">
           <table className="w-full text-left text-sm">
@@ -119,7 +151,7 @@ export default function ContainersPage() {
               </tr>
             </thead>
             <tbody>
-                  {filtered.slice(0, 200).map((c) => (
+              {filtered.slice(0, 200).map((c) => (
                 <tr key={c.id} className="border-t border-[var(--border)] bg-[var(--bg-1)]">
                   <td className="px-4 py-3">
                     <Link href={`/containers/${c.id}`} className="font-medium text-[var(--accent)] hover:underline">

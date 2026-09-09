@@ -27,6 +27,7 @@ func (s *Server) handleInstallScript(w http.ResponseWriter, r *http.Request) {
 
 	script := fmt.Sprintf(`#!/usr/bin/env bash
 # Prefer the CDN copy: curl -fsSL %s/install.sh | sudo bash -s -- --token TOKEN
+# Seedbox / no sudo: curl -fsSL %s/install.sh | bash -s -- --user --token TOKEN
 set -euo pipefail
 CDN_BASE=%q
 CHANNEL=%q
@@ -43,7 +44,7 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown arg: $1" >&2; exit 1 ;;
   esac
 done
-if [[ "$(id -u)" -ne 0 ]]; then echo "Run as root (sudo)." >&2; exit 1; fi
+if [[ "$(id -u)" -ne 0 ]]; then echo "Run as root (sudo), or use CDN install.sh --user for seedboxes." >&2; exit 1; fi
 if [[ -z "$TOKEN" ]]; then echo "Need --token" >&2; exit 1; fi
 if [[ -z "$API_URL" ]]; then
   CFG="$(curl -fsSL "${CDN_BASE}/config.json" 2>/dev/null || true)"
@@ -60,7 +61,6 @@ BIN="$TMP/fleetdeck-agent"
 curl -fsSL "${CDN_BASE}/${CHANNEL}/linux-${ARCH_LABEL}" -o "$BIN"
 chmod +x "$BIN"
 if ! id fleetdeck >/dev/null 2>&1; then useradd --system --home /var/lib/fleetdeck --shell /usr/sbin/nologin fleetdeck; fi
-if getent group docker >/dev/null 2>&1; then usermod -aG docker fleetdeck || true; fi
 install -d -m 0755 /etc/fleetdeck
 install -d -m 0700 -o fleetdeck -g fleetdeck /var/lib/fleetdeck
 install -m 0755 "$BIN" /usr/local/bin/fleetdeck-agent
@@ -93,7 +93,6 @@ Wants=network-online.target
 Type=simple
 User=fleetdeck
 Group=fleetdeck
-SupplementaryGroups=docker
 EnvironmentFile=-/etc/fleetdeck/agent.env
 ExecStart=/usr/local/bin/fleetdeck-agent -api ${FLEETDECK_URL} -state-dir /var/lib/fleetdeck -interval 10s
 Restart=always
@@ -107,6 +106,7 @@ ReadWritePaths=/var/lib/fleetdeck
 WantedBy=multi-user.target
 EOF
 sed -i "s|-interval 10s|-interval ${INTERVAL}|g" /etc/systemd/system/fleetdeck-agent.service
+if getent group docker >/dev/null 2>&1; then usermod -aG docker fleetdeck || true; sed -i '/^Group=fleetdeck$/a SupplementaryGroups=docker' /etc/systemd/system/fleetdeck-agent.service; fi
 cat > /etc/systemd/system/fleetdeck-agent-uninstall.service <<'EOF'
 [Unit]
 Description=FleetDeck agent uninstall (oneshot)
@@ -147,7 +147,7 @@ systemctl enable --now fleetdeck-agent-uninstall.path
 systemctl enable --now fleetdeck-agent-update.path
 systemctl enable --now fleetdeck-agent.service
 echo "Done. Logs: journalctl -u fleetdeck-agent -f"
-`, cdn, cdn, channel, apiDefault)
+`, cdn, cdn, cdn, channel, apiDefault)
 
 	w.Header().Set("Content-Type", "text/x-shellscript; charset=utf-8")
 	w.Header().Set("Content-Disposition", "inline; filename=install-fleetdeck-agent.sh")

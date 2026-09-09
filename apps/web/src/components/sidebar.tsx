@@ -48,7 +48,10 @@ export function Sidebar({
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-1)]">
+    <aside
+      className="flex w-60 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-1)]"
+      aria-label="Primary"
+    >
       <div className="border-b border-[var(--border)] px-5 py-5">
         <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--text-2)]">
           FleetDeck
@@ -58,7 +61,10 @@ export function Sidebar({
         </div>
       </div>
 
-      <div className="space-y-2 border-b border-[var(--border)] px-4 py-3 text-xs">
+      <div
+        className="space-y-2 border-b border-[var(--border)] px-4 py-3 text-xs"
+        aria-label="Fleet status counts"
+      >
         <CountRow label="Alerts" value={counts?.alerts ?? 0} tone={counts?.alerts ? "crit" : "muted"} />
         <CountRow
           label="Unhealthy"
@@ -72,19 +78,23 @@ export function Sidebar({
         />
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4">
+      <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Main">
         {nav.map((section) => (
           <div key={section.label} className="mb-5">
-            <div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-2)]">
+            <div
+              id={`nav-${section.label.toLowerCase()}`}
+              className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-2)]"
+            >
               {section.label}
             </div>
-            <ul className="space-y-0.5">
+            <ul className="space-y-0.5" aria-labelledby={`nav-${section.label.toLowerCase()}`}>
               {section.items.map((item) => {
-                const active = pathname === item.href;
+                const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`));
                 return (
                   <li key={item.href}>
                     <Link
                       href={item.href}
+                      aria-current={active ? "page" : undefined}
                       className={`block rounded-md px-2.5 py-1.5 text-sm transition-colors ${
                         active
                           ? "bg-[var(--bg-3)] text-[var(--text-0)]"

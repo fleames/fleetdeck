@@ -207,6 +207,42 @@ export default function SettingsPage() {
             }
           />
         </label>
+        <label className="block text-xs text-[var(--text-2)]">
+          <span className="mb-1.5 block">5-minute aggregate retention (days)</span>
+          <input
+            className={fieldClass}
+            type="number"
+            min={1}
+            value={settings.metrics?.agg_5m_retention_days ?? 30}
+            onChange={(e) =>
+              setSettings((s) => ({
+                ...s,
+                metrics: { ...s.metrics, agg_5m_retention_days: Number(e.target.value) },
+              }))
+            }
+          />
+        </label>
+        <label className="block text-xs text-[var(--text-2)]">
+          <span className="mb-1.5 block">1-hour aggregate retention (days)</span>
+          <input
+            className={fieldClass}
+            type="number"
+            min={1}
+            value={settings.metrics?.agg_1h_retention_days ?? 365}
+            onChange={(e) =>
+              setSettings((s) => ({
+                ...s,
+                metrics: { ...s.metrics, agg_1h_retention_days: Number(e.target.value) },
+              }))
+            }
+          />
+        </label>
+        <p className="text-xs text-[var(--text-2)]">
+          Retention is applied hourly by the API worker (DELETE on current partitions). Env vars
+          <code className="mx-1">METRICS_*_RETENTION_DAYS</code>
+          are the defaults when settings are unset. Restoring Settings JSON alone does not restore deleted metrics — use Postgres volume /
+          <code className="mx-1">pg_dump</code>.
+        </p>
         <button type="submit" className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm text-white">
           Save
         </button>

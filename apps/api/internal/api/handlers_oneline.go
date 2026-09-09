@@ -146,7 +146,6 @@ if [[ "$(id -u)" -ne 0 ]]; then echo "Re-run with sudo." >&2; exit 1; fi
 if [[ -z "$TOKEN" || -z "$API_URL" ]]; then echo "token and api required" >&2; exit 1; fi
 echo "Installing FleetDeck agent → $API_URL"
 if ! id fleetdeck >/dev/null 2>&1; then useradd --system --home /var/lib/fleetdeck --shell /usr/sbin/nologin fleetdeck; fi
-if getent group docker >/dev/null 2>&1; then usermod -aG docker fleetdeck || true; fi
 install -d -m 0755 /etc/fleetdeck
 install -d -m 0700 -o fleetdeck -g fleetdeck /var/lib/fleetdeck
 AGENT_B64_GZ='%s'
@@ -181,7 +180,6 @@ Wants=network-online.target
 Type=simple
 User=fleetdeck
 Group=fleetdeck
-SupplementaryGroups=docker
 EnvironmentFile=-/etc/fleetdeck/agent.env
 ExecStart=/usr/local/bin/fleetdeck-agent -api ${FLEETDECK_URL} -state-dir /var/lib/fleetdeck -interval 10s
 Restart=always
@@ -195,6 +193,7 @@ ReadWritePaths=/var/lib/fleetdeck
 WantedBy=multi-user.target
 EOF
 sed -i "s|-interval 10s|-interval ${INTERVAL}|g" /etc/systemd/system/fleetdeck-agent.service
+if getent group docker >/dev/null 2>&1; then usermod -aG docker fleetdeck || true; sed -i '/^Group=fleetdeck$/a SupplementaryGroups=docker' /etc/systemd/system/fleetdeck-agent.service; fi
 cat > /etc/systemd/system/fleetdeck-agent-uninstall.service <<'EOF'
 [Unit]
 Description=FleetDeck agent uninstall (oneshot)

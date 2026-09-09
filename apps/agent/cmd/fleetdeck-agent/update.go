@@ -129,19 +129,19 @@ func stageUpdateFromCDN(cdnBase, channel string) (string, error) {
 	}
 
 	sumsURL := cdnBase + "/" + channel + "/SHA256SUMS"
-	if sum, ok, err := fetchSHA256For(sumsURL, name); err != nil {
+	sum, err := fetchSHA256For(sumsURL, name)
+	if err != nil {
 		_ = os.Remove(tmp)
 		return "", fmt.Errorf("checksum: %w", err)
-	} else if ok {
-		got, err := fileSHA256(tmp)
-		if err != nil {
-			_ = os.Remove(tmp)
-			return "", err
-		}
-		if !strings.EqualFold(got, sum) {
-			_ = os.Remove(tmp)
-			return "", fmt.Errorf("SHA256 mismatch for %s (want %s got %s)", name, sum, got)
-		}
+	}
+	got, err := fileSHA256(tmp)
+	if err != nil {
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	if !strings.EqualFold(got, sum) {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("SHA256 mismatch for %s (want %s got %s)", name, sum, got)
 	}
 
 	_ = os.Remove(updatePendingPath)
@@ -173,23 +173,24 @@ func downloadFile(url, dest string) error {
 	return err
 }
 
-// fetchSHA256For returns (hash, found, err). Missing SHA256SUMS is ok (found=false).
-func fetchSHA256For(sumsURL, artifact string) (string, bool, error) {
+// fetchSHA256For returns the expected hash for artifact. Missing SHA256SUMS or
+// an unlisted artifact fails closed (CDN updates require checksums).
+func fetchSHA256For(sumsURL, artifact string) (string, error) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	res, err := client.Get(sumsURL)
 	if err != nil {
-		return "", false, nil
+		return "", fmt.Errorf("fetch SHA256SUMS: %w", err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusNotFound {
-		return "", false, nil
+		return "", fmt.Errorf("SHA256SUMS missing at %s (required for agent update)", sumsURL)
 	}
 	if res.StatusCode != http.StatusOK {
-		return "", false, fmt.Errorf("HTTP %d fetching SHA256SUMS", res.StatusCode)
+		return "", fmt.Errorf("HTTP %d fetching SHA256SUMS", res.StatusCode)
 	}
 	b, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	for _, line := range strings.Split(string(b), "\n") {
 		line = strings.TrimSpace(line)
@@ -204,12 +205,12 @@ func fetchSHA256For(sumsURL, artifact string) (string, bool, error) {
 		file = strings.TrimPrefix(file, "*")
 		if filepath.Base(file) == artifact {
 			if len(hash) != 64 {
-				return "", false, fmt.Errorf("invalid sha256 in SHA256SUMS")
+				return "", fmt.Errorf("invalid sha256 in SHA256SUMS")
 			}
-			return hash, true, nil
+			return hash, nil
 		}
 	}
-	return "", false, fmt.Errorf("%s not listed in SHA256SUMS", artifact)
+	return "", fmt.Errorf("%s not listed in SHA256SUMS", artifact)
 }
 
 func fileSHA256(path string) (string, error) {

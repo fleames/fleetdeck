@@ -37,18 +37,21 @@ export function formatUptime(seconds?: number | null): string {
   return `${h}h ${m}m`;
 }
 
+/** Operator-facing freshness for LIVE / RECENT / STALE / OFFLINE. */
 export function freshnessLabel(
   lastUpdated?: string | null,
   status?: string,
+  nowMs: number = Date.now(),
 ): {
   label: string;
   tone: "ok" | "warn" | "crit" | "muted";
+  code: "LIVE" | "RECENT" | "STALE" | "OFFLINE" | "NONE";
 } {
-  if (status === "offline") return { label: "Offline", tone: "crit" };
-  if (!lastUpdated) return { label: "No metrics yet", tone: "muted" };
-  const ageMs = Date.now() - new Date(lastUpdated).getTime();
-  if (ageMs < 30_000)
-    return { label: `Updated ${Math.max(1, Math.round(ageMs / 1000))}s ago`, tone: "ok" };
-  if (ageMs < 120_000) return { label: `Delayed · ${Math.round(ageMs / 1000)}s`, tone: "warn" };
-  return { label: `Stale · ${Math.round(ageMs / 1000)}s ago`, tone: "crit" };
+  if (status === "offline") return { label: "OFFLINE", tone: "crit", code: "OFFLINE" };
+  if (!lastUpdated) return { label: "No metrics yet", tone: "muted", code: "NONE" };
+  const ageMs = nowMs - new Date(lastUpdated).getTime();
+  const ageSec = Math.max(1, Math.round(ageMs / 1000));
+  if (ageMs < 30_000) return { label: `LIVE · ${ageSec}s`, tone: "ok", code: "LIVE" };
+  if (ageMs < 120_000) return { label: `RECENT · ${ageSec}s`, tone: "warn", code: "RECENT" };
+  return { label: `STALE · ${ageSec}s`, tone: "crit", code: "STALE" };
 }

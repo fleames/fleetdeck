@@ -35,20 +35,29 @@ func (s *Server) handleInstallCommand(w http.ResponseWriter, r *http.Request) {
 		`curl -fsSL %s/install.sh | sudo bash -s -- --token '%s'`,
 		cdn, escToken,
 	)
+	userCommand := fmt.Sprintf(
+		`curl -fsSL %s/install.sh | bash -s -- --user --token '%s'`,
+		cdn, escToken,
+	)
 	if apiURL != "" && !strings.EqualFold(apiURL, strings.TrimRight(s.cfg.APIPublicURL, "/")) {
 		escAPI := strings.ReplaceAll(apiURL, `'`, `'\''`)
 		command = fmt.Sprintf(
 			`curl -fsSL %s/install.sh | sudo bash -s -- --token '%s' --api '%s'`,
 			cdn, escToken, escAPI,
 		)
+		userCommand = fmt.Sprintf(
+			`curl -fsSL %s/install.sh | bash -s -- --user --token '%s' --api '%s'`,
+			cdn, escToken, escAPI,
+		)
 	}
 
 	httpx.JSON(w, http.StatusOK, map[string]any{
-		"command":     command,
-		"cdn_base":    cdn,
-		"cdn_channel": channel,
-		"api_url":     apiURL,
-		"tunnel":      true,
-		"note":        "VPS downloads from CDN and dials API_PUBLIC_URL (Cloudflare Tunnel). Keep FleetDeck + tunnel online.",
+		"command":      command,
+		"user_command": userCommand,
+		"cdn_base":     cdn,
+		"cdn_channel":  channel,
+		"api_url":      apiURL,
+		"tunnel":       true,
+		"note":         "VPS downloads from CDN and dials API_PUBLIC_URL (Cloudflare Tunnel). Keep FleetDeck + tunnel online. Seedbox / no sudo: use user_command (--user).",
 	})
 }

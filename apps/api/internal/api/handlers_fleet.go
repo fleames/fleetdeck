@@ -10,6 +10,7 @@ import (
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/httpx"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type latestMetrics struct {
@@ -177,7 +178,7 @@ func (s *Server) handleServerMetricsHistory(w http.ResponseWriter, r *http.Reque
 	if rangeKey == "" {
 		rangeKey = "1h"
 	}
-	dur := map[string]time.Duration{
+	requested := map[string]time.Duration{
 		"15m": 15 * time.Minute,
 		"1h":  time.Hour,
 		"6h":  6 * time.Hour,
@@ -185,21 +186,20 @@ func (s *Server) handleServerMetricsHistory(w http.ResponseWriter, r *http.Reque
 		"7d":  7 * 24 * time.Hour,
 		"30d": 30 * 24 * time.Hour,
 	}[rangeKey]
-	if dur == 0 {
-		dur = time.Hour
+	if requested == 0 {
+		requested = time.Hour
+		rangeKey = "1h"
+	}
+
+	source, maxRetain := metricsHistorySource(rangeKey, s.cfg.RawRetentionDays, s.cfg.Agg5mRetentionDays, s.cfg.Agg1hRetentionDays)
+	dur := requested
+	truncated := false
+	if maxRetain > 0 && dur > maxRetain {
+		dur = maxRetain
+		truncated = true
 	}
 	since := time.Now().UTC().Add(-dur)
-	rows, err := s.pool.Query(r.Context(), `
-		SELECT ts, cpu_pct, mem_used_bytes, disk_used_bytes, disk_total_bytes, net_rx_bps, net_tx_bps
-		FROM server_metrics_raw
-		WHERE server_id=$1 AND ts >= $2
-		ORDER BY ts ASC
-		LIMIT 5000`, id, since)
-	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", "Could not load metrics history.")
-		return
-	}
-	defer rows.Close()
+
 	type point struct {
 		TS             time.Time `json:"ts"`
 		CPUPct         *float64  `json:"cpu_pct"`
@@ -210,15 +210,83 @@ func (s *Server) handleServerMetricsHistory(w http.ResponseWriter, r *http.Reque
 		NetTxBps       *int64    `json:"net_tx_bps"`
 	}
 	out := make([]point, 0)
-	for rows.Next() {
-		var p point
-		if err := rows.Scan(&p.TS, &p.CPUPct, &p.MemUsedBytes, &p.DiskUsedBytes, &p.DiskTotalBytes, &p.NetRxBps, &p.NetTxBps); err != nil {
+
+	switch source {
+	case "5m", "1h":
+		var rows pgx.Rows
+		var err error
+		if source == "1h" {
+			rows, err = s.pool.Query(r.Context(), `
+				SELECT bucket, cpu_pct_avg, mem_used_bytes_avg, disk_used_bytes_avg, net_rx_bps_avg, net_tx_bps_avg
+				FROM server_metrics_1h
+				WHERE server_id=$1 AND bucket >= $2
+				ORDER BY bucket ASC
+				LIMIT 5000`, id, since)
+		} else {
+			rows, err = s.pool.Query(r.Context(), `
+				SELECT bucket, cpu_pct_avg, mem_used_bytes_avg, disk_used_bytes_avg, net_rx_bps_avg, net_tx_bps_avg
+				FROM server_metrics_5m
+				WHERE server_id=$1 AND bucket >= $2
+				ORDER BY bucket ASC
+				LIMIT 5000`, id, since)
+		}
+		if err != nil {
 			httpx.Error(w, http.StatusInternalServerError, "internal", "Could not load metrics history.")
 			return
 		}
-		out = append(out, p)
+		defer rows.Close()
+		for rows.Next() {
+			var p point
+			if err := rows.Scan(&p.TS, &p.CPUPct, &p.MemUsedBytes, &p.DiskUsedBytes, &p.NetRxBps, &p.NetTxBps); err != nil {
+				httpx.Error(w, http.StatusInternalServerError, "internal", "Could not load metrics history.")
+				return
+			}
+			out = append(out, p)
+		}
+	default:
+		rows, err := s.pool.Query(r.Context(), `
+			SELECT ts, cpu_pct, mem_used_bytes, disk_used_bytes, disk_total_bytes, net_rx_bps, net_tx_bps
+			FROM server_metrics_raw
+			WHERE server_id=$1 AND ts >= $2
+			ORDER BY ts ASC
+			LIMIT 5000`, id, since)
+		if err != nil {
+			httpx.Error(w, http.StatusInternalServerError, "internal", "Could not load metrics history.")
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var p point
+			if err := rows.Scan(&p.TS, &p.CPUPct, &p.MemUsedBytes, &p.DiskUsedBytes, &p.DiskTotalBytes, &p.NetRxBps, &p.NetTxBps); err != nil {
+				httpx.Error(w, http.StatusInternalServerError, "internal", "Could not load metrics history.")
+				return
+			}
+			out = append(out, p)
+		}
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"data": out, "range": rangeKey, "since": since})
+
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"data":      out,
+		"range":     rangeKey,
+		"since":     since,
+		"source":    source,
+		"truncated": truncated,
+	})
+}
+
+// metricsHistorySource picks raw vs rollup tables and the max lookback for that store.
+func metricsHistorySource(rangeKey string, rawDays, agg5mDays, agg1hDays int) (source string, maxRetain time.Duration) {
+	rawMax := time.Duration(rawDays) * 24 * time.Hour
+	agg5mMax := time.Duration(agg5mDays) * 24 * time.Hour
+	agg1hMax := time.Duration(agg1hDays) * 24 * time.Hour
+	switch rangeKey {
+	case "24h", "7d":
+		return "5m", agg5mMax
+	case "30d":
+		return "1h", agg1hMax
+	default:
+		return "raw", rawMax
+	}
 }
 
 func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
@@ -788,11 +856,13 @@ func parseServerFromEnrollmentLabel(label string) (uuid.UUID, bool) {
 func (s *Server) handleAgentHeartbeat(w http.ResponseWriter, r *http.Request) {
 	ident := r.Context().Value(ctxAgent).(agentIdentity)
 	var body struct {
-		AgentVersion     string  `json:"agent_version"`
-		LatencyMS        *int    `json:"latency_ms"`
-		ResourceCPUPct   *float64 `json:"resource_cpu_pct"`
-		ResourceRSSBytes *int64  `json:"resource_rss_bytes"`
-		DockerHealthy    *bool   `json:"docker_healthy"`
+		AgentVersion       string   `json:"agent_version"`
+		LatencyMS          *int     `json:"latency_ms"`
+		ResourceCPUPct     *float64 `json:"resource_cpu_pct"`
+		ResourceRSSBytes   *int64   `json:"resource_rss_bytes"`
+		DockerHealthy      *bool    `json:"docker_healthy"`
+		BufferedSamples    *int     `json:"buffered_samples"`
+		OldestBufferAgeSec *int     `json:"oldest_buffer_age_sec"`
 	}
 	_ = httpx.Decode(r, &body)
 
@@ -804,9 +874,12 @@ func (s *Server) handleAgentHeartbeat(w http.ResponseWriter, r *http.Request) {
 		    last_latency_ms=COALESCE($3, last_latency_ms),
 		    resource_cpu_pct=COALESCE($4, resource_cpu_pct),
 		    resource_rss_bytes=COALESCE($5, resource_rss_bytes),
+		    buffered_samples=COALESCE($6, buffered_samples),
+		    oldest_buffer_age_sec=COALESCE($7, oldest_buffer_age_sec),
 		    updated_at=now()
 		WHERE id=$1`,
 		ident.AgentID, body.AgentVersion, body.LatencyMS, body.ResourceCPUPct, body.ResourceRSSBytes,
+		body.BufferedSamples, body.OldestBufferAgeSec,
 	)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "internal", "Could not record heartbeat.")

@@ -109,6 +109,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-[var(--bg-0)]">
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
       <ThemeSync />
       <CommandPalette />
       <Sidebar
@@ -119,7 +122,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         }}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between border-b border-[var(--border)] bg-[var(--bg-1)] px-6">
+        <header
+          className="flex h-14 items-center justify-between border-b border-[var(--border)] bg-[var(--bg-1)] px-6"
+          role="banner"
+        >
           <div className="flex items-center gap-4 text-sm text-[var(--text-1)]">
             <span>
               Signed in as{" "}
@@ -130,6 +136,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               className="rounded-md border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-2)] hover:bg-[var(--bg-2)]"
               onClick={() => window.dispatchEvent(new Event("fleetdeck:open-search"))}
               title="Search (Ctrl+K)"
+              aria-label="Open command palette (Ctrl+K)"
             >
               Ctrl+K
             </button>
@@ -137,6 +144,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-2">
             <NotificationBell />
             <button
+              type="button"
               className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-1)] hover:bg-[var(--bg-2)]"
               onClick={async () => {
                 knownAuthed.current = false;
@@ -148,7 +156,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </button>
           </div>
         </header>
-        <main className="flex-1 overflow-auto p-6">{children}</main>
+        <main id="main-content" className="flex-1 overflow-auto p-6" tabIndex={-1}>
+          {children}
+        </main>
       </div>
     </div>
   );

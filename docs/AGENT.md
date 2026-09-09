@@ -19,7 +19,7 @@ The Docker socket stays on the host and is never exposed to browsers.
 From the dashboard **Servers** list or server detail, admins/operators can **Update agent**:
 
 1. If the agent is online, FleetDeck queues `agent.update` with `cdn_base` + `channel` from `AGENT_CDN_BASE` / `AGENT_CDN_CHANNEL` (default `https://cdn.tarkovbot.com/fleetdeck` + `latest`).
-2. The agent (as `fleetdeck`, under `NoNewPrivileges`) downloads `${cdn}/${channel}/linux-{amd64|arm64}` into `/var/lib/fleetdeck/pending-update.bin`, verifies against `SHA256SUMS` when present, then reports success.
+2. The agent (as `fleetdeck`, under `NoNewPrivileges`) downloads `${cdn}/${channel}/linux-{amd64|arm64}` into `/var/lib/fleetdeck/pending-update.bin`, **requires** a matching entry in `${cdn}/${channel}/SHA256SUMS` (fail closed if missing or mismatch), then reports success.
 3. It writes `/var/lib/fleetdeck/UPDATE_REQUESTED`.
 4. `fleetdeck-agent-update.path` runs a root oneshot that applies the staged binary to `/usr/local/bin/fleetdeck-agent` and `systemctl restart fleetdeck-agent` — **credentials under `/var/lib/fleetdeck` are not touched**.
 5. The new process heartbeats with the new `agent_version`.
@@ -64,6 +64,12 @@ FleetDeck stays on your PC. Expose the API with a **Cloudflare Tunnel**, publish
 
 ```bash
 curl -fsSL https://cdn.tarkovbot.com/fleetdeck/install.sh | sudo bash -s -- --token 'TOKEN'
+```
+
+Seedbox / no sudo:
+
+```bash
+curl -fsSL https://cdn.tarkovbot.com/fleetdeck/install.sh | bash -s -- --user --token 'TOKEN'
 ```
 
 Setup: [REMOTE_AGENTS.md](REMOTE_AGENTS.md) — run `.\scripts\setup-cloudflare-tunnel.ps1` once. Your PC must be online.

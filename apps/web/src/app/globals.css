@@ -90,6 +90,27 @@ a {
   outline-offset: 2px;
 }
 
+.skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: 0.75rem;
+  z-index: 100;
+  transform: translateY(-160%);
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-1);
+  color: var(--text-0);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

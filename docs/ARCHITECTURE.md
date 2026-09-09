@@ -22,8 +22,8 @@ FleetDeck aggregates **real** infrastructure state from enrolled servers into on
               ┌─────────┘         └─────────┐
               ▼                             ▼
      ┌────────────────┐            ┌────────────────┐
-     │ Local Database │            │ Agent gateway  │
-     │ PG + metrics   │            │ WSS / mTLS     │
+     │ Local Database │            │ Agent HTTPS API│
+     │ PG + metrics   │            │ bearer auth    │
      └────────────────┘            └───────┬────────┘
                                            │ agents dial out
                      ┌─────────────────────┼─────────────────────┐
@@ -36,6 +36,7 @@ FleetDeck aggregates **real** infrastructure state from enrolled servers into on
                  host+Docker           host+Docker           host+Docker
 ```
 
+**Honesty note:** Agents use **HTTPS JSON + bearer credentials** (not mTLS). Dashboard realtime is an authenticated WebSocket (`/api/v1/realtime`), not a separate mTLS gateway. OpenAPI/`packages/shared` codegen is not populated yet.
 ## Stack proposal (Phase 2+)
 
 | Layer | Choice | Rationale |
@@ -89,9 +90,9 @@ Separate: monitoring (read), diagnostics, management (mutating, confirmed).
 ```text
 Collectors (system / docker / meta)
   → Normalizer (canonical metric schema)
-  → Buffer + backpressure
-  → Transport (authenticated WSS push)
-  → Optional command channel (explicit management only)
+  → Durable disk spool on POST failure (size/age capped) + flush when API recovers
+  → Transport (HTTPS JSON + bearer; heartbeat includes buffer counters)
+  → Command poll channel (explicit management only)
 ```
 
 ## Data flow
@@ -108,13 +109,13 @@ Collectors (system / docker / meta)
 
 - Unreachable agent → server **Offline**; last-known + freshness shown; other servers unaffected.
 - Docker unavailable on host → system metrics continue; Docker section shows explicit failure.
-- Slow agent → buffered ingest; UI shows delayed/stale, never silently “current”.
+- Slow / unreachable API → agent spools metrics to disk; UI shows delayed/stale via freshness (and optional agent buffer counters), never silently “current”.
 - Corrupt payload → reject + audit/diagnostic event; no partial trust.
 
 ## Performance strategy
 
 - Async ingest; never block UI on one host
-- Batch metric writes; N+1-free list endpoints with embeddings or join views
+- Batch multi-row metric inserts + in-process ingest semaphore (503 backpressure when saturated)
 - Pagination + virtualized lists for large fleets
 - Cached dashboard snapshot endpoint for “is everything okay?” in ~1s when warm
 - Single browser realtime connection (multiplexed topics)

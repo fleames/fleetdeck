@@ -16,6 +16,7 @@ export function StatusPill({ state }: { state: string }) {
     <span
       className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-2)] px-2 py-0.5 text-[11px]"
       title={item.label}
+      role="status"
     >
       <span
         className="inline-block h-1.5 w-1.5 rounded-full"

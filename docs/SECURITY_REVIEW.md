@@ -5,7 +5,8 @@ Status as of hardening + CI pass. Items marked **done** have implementing code +
 | Area | Status | Evidence / notes |
 |------|--------|------------------|
 | Authn (Argon2id, HttpOnly SameSite cookies) | **done** | `internal/auth` |
-| Authz roles on mutating routes | **done** | `requireRole` for settings/backup/restore/audit/actions/tokens |
+| Authz roles on mutating routes | **done** | `requireRole(admin,operator)` for server create/remove, alert ack/resolve/silence, container actions, tokens; admin-only settings/users/backup; viewers read-only |
+| Authenticated realtime WebSocket | **done** | Session cookie required; empty Origin rejected when `COOKIE_SECURE=true` |
 | Unauthenticated fleet reads blocked | **done** | Fleet routes use `requireUser` |
 | Login rate limit + failed login audit | **done** | `loginLimiter`, audit `auth.login` failed |
 | Enrollment rate limit | **done** | `enrollLimiter` on `/agent/v1/enroll` |
@@ -25,6 +26,6 @@ Status as of hardening + CI pass. Items marked **done** have implementing code +
 
 ## Residual risks
 
-- Local `.env` `SESSION_SECRET` is a development placeholder — rotate before any shared deployment.
+- Local `.env` `SESSION_SECRET` is a development placeholder — rotate before any shared deployment. It derives the AES-GCM key for the `secrets` table (sessions remain opaque DB-hashed tokens).
 - Management actions depend on a healthy agent command poll loop; timeouts return 202 accepted.
 - `pnpm audit` in CI is advisory (`|| true`) — review output on each release.
