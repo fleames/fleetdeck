@@ -1,4 +1,4 @@
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 COPY apps/web/package.json apps/web/pnpm-lock.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
@@ -10,7 +10,7 @@ ARG API_INTERNAL_URL=http://api:8080
 ENV API_INTERNAL_URL=$API_INTERNAL_URL
 RUN pnpm build
 
-FROM node:24-alpine AS runner
+FROM node:26-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 # Rewrites are baked at build time from API_INTERNAL_URL; keep env for clarity.
