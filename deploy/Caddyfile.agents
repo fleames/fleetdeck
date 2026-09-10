@@ -5,7 +5,7 @@
 # Compose: docker compose -f deploy/docker-compose.relay.yml up -d --build
 # Then reverse-proxy :8090 here.
 
-agents.tarkovbot.com {
+agents.example.com {
 	encode gzip
 	reverse_proxy 127.0.0.1:8090
 }
