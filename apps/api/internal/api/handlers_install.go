@@ -76,6 +76,10 @@ cat > /usr/local/libexec/fleetdeck/update <<'EOF'
 #!/bin/bash
 set -euo pipefail
 sleep 2
+PENDING=/var/lib/fleetdeck/pending-update.bin
+if [[ -x "$PENDING" && -s "$PENDING" ]]; then
+  exec "$PENDING" -update
+fi
 exec /usr/local/bin/fleetdeck-agent -update
 EOF
 chmod 0755 /usr/local/libexec/fleetdeck/update

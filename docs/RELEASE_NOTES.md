@@ -1,5 +1,14 @@
 # FleetDeck 0.4.0-dev — release notes (pre-1.0)
 
+## 0.4.3-dev
+
+- **Fix:** agent memory leak — reuse a single Docker `http.Client`/`Transport` (was creating a new Transport per Engine API call)
+- Cap Docker response body reads; heartbeat uses `/_ping` instead of full inventory every metrics tick
+- Exclusive `agent.lock` in the state dir so root + `fleetdeck` duplicates cannot both run
+- **Fix:** panel/`-update` and CDN `upgrade.sh` stop the unit, kill orphan agents sharing the managed binary/state-dir, then start — so `systemctl restart` alone cannot leave a root duplicate (~GB RAM) beside the systemd instance
+- Update helper prefers `exec pending-update.bin -update` so the new apply logic runs on the first panel upgrade after the wrapper is refreshed
+- See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for interim host cleanup
+
 ## 0.4.2-dev
 
 - Panel **Update agent** (`POST /api/v1/servers/{id}/update-agent`) queues `agent.update`

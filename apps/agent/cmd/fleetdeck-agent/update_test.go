@@ -53,3 +53,57 @@ func TestFileSHA256(t *testing.T) {
 		t.Fatalf("got %s want %s", got, want)
 	}
 }
+
+func TestCmdlineMatchesAgent(t *testing.T) {
+	bin := "/usr/local/bin/fleetdeck-agent"
+	state := "/var/lib/fleetdeck"
+	cases := []struct {
+		name    string
+		cmdline string
+		want    bool
+	}{
+		{
+			name:    "systemd fleetdeck user",
+			cmdline: bin + "\x00-api\x00https://x\x00-state-dir\x00" + state + "\x00-interval\x0010s",
+			want:    true,
+		},
+		{
+			name:    "root manual same state",
+			cmdline: bin + "\x00-state-dir\x00" + state,
+			want:    true,
+		},
+		{
+			name:    "equals form",
+			cmdline: bin + "\x00-state-dir=" + state,
+			want:    true,
+		},
+		{
+			name:    "default state omitted",
+			cmdline: bin + "\x00-api\x00https://x",
+			want:    true,
+		},
+		{
+			name:    "user install different path",
+			cmdline: "/home/u/.local/bin/fleetdeck-agent\x00-state-dir\x00/home/u/.fleetdeck",
+			want:    false,
+		},
+		{
+			name:    "other binary",
+			cmdline: "/usr/bin/docker\x00ps",
+			want:    false,
+		},
+		{
+			name:    "update oneshot same binary",
+			cmdline: bin + "\x00-update",
+			want:    true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := cmdlineMatchesAgent([]byte(tc.cmdline), bin, state)
+			if got != tc.want {
+				t.Fatalf("got %v want %v", got, tc.want)
+			}
+		})
+	}
+}

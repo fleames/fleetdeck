@@ -36,8 +36,32 @@ function Get-EnvValue([string]$Path, [string]$Key) {
   return ($line -replace "^[^=]*=", "").Trim().Trim('"').Trim("'")
 }
 
+function Wait-DockerEngine {
+  param(
+    [int]$TimeoutSeconds = 300,
+    [int]$IntervalSeconds = 5
+  )
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  Write-Host "Waiting for Docker Engine (docker info)..."
+  while ((Get-Date) -lt $deadline) {
+    try {
+      & docker info 1>$null 2>$null
+      if ($LASTEXITCODE -eq 0) {
+        Write-Host "Docker Engine is ready."
+        return
+      }
+    } catch {
+      # docker missing or not responding yet
+    }
+    Start-Sleep -Seconds $IntervalSeconds
+  }
+  throw "Docker Engine not ready after ${TimeoutSeconds}s. Start Docker Desktop (enable 'Start Docker Desktop when you log in') and retry."
+}
+
 Push-Location -LiteralPath $Root
 try {
+  Wait-DockerEngine
+
   $token = Get-EnvValue $EnvFile "CLOUDFLARE_TUNNEL_TOKEN"
   $composeArgs = @("--env-file", $EnvFile, "-f", $ComposeFile, "up", "-d")
   if ($Build) {

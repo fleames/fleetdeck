@@ -23,6 +23,11 @@ const (
 
 // runApplyUpdate installs a staged binary and restarts the agent service. Must run as root.
 // Does not touch enrollment credentials under /var/lib/fleetdeck.
+//
+// Order matters: stop the unit and kill orphans (manual root starts sharing the
+// state-dir) before replacing the binary and starting again. A plain
+// `systemctl restart` leaves non-systemd copies running and — with agent.lock —
+// can also block the new unit from starting.
 func runApplyUpdate(delay time.Duration) error {
 	if runtime.GOOS != "linux" {
 		return fmt.Errorf("update is only supported on Linux")
@@ -40,15 +45,17 @@ func runApplyUpdate(delay time.Duration) error {
 		return fmt.Errorf("no pending update binary at %s", updatePendingPath)
 	}
 
+	stopManagedAgentProcesses(agentBinaryPath, filepath.Dir(updatePendingPath), os.Getpid())
+
 	if err := replaceBinary(updatePendingPath, agentBinaryPath); err != nil {
 		return err
 	}
 	_ = os.Remove(updatePendingPath)
 
-	if out, err := exec.Command("systemctl", "restart", "fleetdeck-agent.service").CombinedOutput(); err != nil {
-		return fmt.Errorf("restart fleetdeck-agent: %v (%s)", err, strings.TrimSpace(string(out)))
+	if out, err := exec.Command("systemctl", "start", "fleetdeck-agent.service").CombinedOutput(); err != nil {
+		return fmt.Errorf("start fleetdeck-agent: %v (%s)", err, strings.TrimSpace(string(out)))
 	}
-	fmt.Println("FleetDeck agent binary updated; service restarted.")
+	fmt.Println("FleetDeck agent binary updated; leftover processes cleared; service started.")
 	return nil
 }
 

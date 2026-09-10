@@ -42,6 +42,90 @@ case "$ARCH" in
   *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
 esac
 
+AGENT_BIN="/usr/local/bin/fleetdeck-agent"
+STATE_DIR="/var/lib/fleetdeck"
+
+# Stop the systemd unit (if any), then carefully signal any leftover processes for
+# this binary/state-dir (manual sudo starts are not covered by systemctl restart).
+stop_and_kill_agent_processes() {
+  systemctl stop fleetdeck-agent.service 2>/dev/null || true
+
+  local pids=()
+  local pid exe cmdline stated
+
+  if [[ -f "${STATE_DIR}/agent.lock" ]]; then
+    pid="$(tr -d ' \n' <"${STATE_DIR}/agent.lock" 2>/dev/null || true)"
+    if [[ "${pid}" =~ ^[0-9]+$ ]] && [[ "${pid}" -gt 1 ]] && kill -0 "${pid}" 2>/dev/null; then
+      pids+=("${pid}")
+    fi
+  fi
+
+  for pid in /proc/[0-9]*; do
+    pid="${pid#/proc/}"
+    [[ "${pid}" =~ ^[0-9]+$ ]] || continue
+    [[ "${pid}" -gt 1 ]] || continue
+
+    exe="$(readlink "/proc/${pid}/exe" 2>/dev/null || true)"
+    exe="${exe% (deleted)}"
+    cmdline="$(tr '\0' ' ' <"/proc/${pid}/cmdline" 2>/dev/null || true)"
+
+    if [[ "${exe}" == "${AGENT_BIN}" ]]; then
+      pids+=("${pid}")
+      continue
+    fi
+
+    case "${cmdline}" in
+      "${AGENT_BIN}"*|*/fleetdeck-agent\ *|fleetdeck-agent\ *)
+        ;;
+      *)
+        continue
+        ;;
+    esac
+
+    stated=""
+    if [[ "${cmdline}" =~ -state-dir[= ]([^ ]+) ]]; then
+      stated="${BASH_REMATCH[1]}"
+    fi
+    if [[ -z "${stated}" ]]; then
+      stated="${STATE_DIR}"
+    fi
+    if [[ "${stated}" == "${STATE_DIR}" ]]; then
+      pids+=("${pid}")
+    fi
+  done
+
+  if [[ "${#pids[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  # Unique PIDs
+  local -A seen=()
+  local uniq=()
+  for pid in "${pids[@]}"; do
+    [[ -n "${seen[$pid]+x}" ]] && continue
+    seen[$pid]=1
+    uniq+=("${pid}")
+  done
+
+  echo "Stopping leftover fleetdeck-agent process(es): ${uniq[*]}"
+  kill -TERM "${uniq[@]}" 2>/dev/null || true
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    local alive=()
+    for pid in "${uniq[@]}"; do
+      if kill -0 "${pid}" 2>/dev/null; then
+        alive+=("${pid}")
+      fi
+    done
+    [[ "${#alive[@]}" -eq 0 ]] && return 0
+    uniq=("${alive[@]}")
+    sleep 0.5
+  done
+  echo "Force-killing leftover fleetdeck-agent process(es): ${uniq[*]}"
+  kill -KILL "${uniq[@]}" 2>/dev/null || true
+  sleep 0.2
+}
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 BIN="$TMP/fleetdeck-agent"
@@ -75,41 +159,48 @@ if SUMS="$(curl -fsSL "$SUMS_URL" 2>/dev/null || true)"; then
 fi
 
 PREV_VER="unknown"
-if [[ -x /usr/local/bin/fleetdeck-agent ]]; then
+if [[ -x "${AGENT_BIN}" ]]; then
   if command -v strings >/dev/null 2>&1; then
-    PREV_VER="$(strings /usr/local/bin/fleetdeck-agent 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' | head -n1 || true)"
+    PREV_VER="$(strings "${AGENT_BIN}" 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' | head -n1 || true)"
   fi
   PREV_VER="${PREV_VER:-unknown}"
 fi
 
+echo "Stopping running agent (systemd + any orphans sharing ${STATE_DIR}) …"
+stop_and_kill_agent_processes
+
 install -d -m 0755 /usr/local/bin
-install -m 0755 "$BIN" /usr/local/bin/fleetdeck-agent
+install -m 0755 "$BIN" "${AGENT_BIN}"
 
 # Ensure update/uninstall helpers exist so future panel updates work.
+# Always refresh the update wrapper so panel upgrades exec the staged binary
+# (new stop/orphan-kill logic) instead of the pre-replace on-disk binary.
 install -d -m 0755 /usr/local/libexec/fleetdeck
-if [[ ! -x /usr/local/libexec/fleetdeck/uninstall ]]; then
-  cat > /usr/local/libexec/fleetdeck/uninstall <<'EOF'
+cat > /usr/local/libexec/fleetdeck/uninstall <<'EOF'
 #!/bin/bash
 # Triggered by fleetdeck-agent-uninstall.path; delay so agent can report command result.
 set -euo pipefail
 sleep 2
 exec /usr/local/bin/fleetdeck-agent -uninstall
 EOF
-  chmod 0755 /usr/local/libexec/fleetdeck/uninstall
-fi
+chmod 0755 /usr/local/libexec/fleetdeck/uninstall
 
-if [[ ! -x /usr/local/libexec/fleetdeck/update ]]; then
-  cat > /usr/local/libexec/fleetdeck/update <<'EOF'
+cat > /usr/local/libexec/fleetdeck/update <<'EOF'
 #!/bin/bash
 # Triggered by fleetdeck-agent-update.path; delay so agent can report command result.
-# Applies staged binary from /var/lib/fleetdeck/pending-update.bin (credentials untouched).
+# Prefer pending-update.bin so the NEW binary's -update (stop + orphan kill + start) runs
+# on the first panel upgrade after this wrapper is installed.
 set -euo pipefail
 sleep 2
+PENDING=/var/lib/fleetdeck/pending-update.bin
+if [[ -x "$PENDING" && -s "$PENDING" ]]; then
+  exec "$PENDING" -update
+fi
 exec /usr/local/bin/fleetdeck-agent -update
 EOF
-  chmod 0755 /usr/local/libexec/fleetdeck/update
-fi
+chmod 0755 /usr/local/libexec/fleetdeck/update
 
+# Refresh systemd helper units when missing (idempotent overwrite for update path bits).
 if [[ ! -f /etc/systemd/system/fleetdeck-agent-uninstall.service ]]; then
   cat > /etc/systemd/system/fleetdeck-agent-uninstall.service <<'EOF'
 [Unit]
@@ -135,8 +226,7 @@ WantedBy=multi-user.target
 EOF
 fi
 
-if [[ ! -f /etc/systemd/system/fleetdeck-agent-update.service ]]; then
-  cat > /etc/systemd/system/fleetdeck-agent-update.service <<'EOF'
+cat > /etc/systemd/system/fleetdeck-agent-update.service <<'EOF'
 [Unit]
 Description=FleetDeck agent update (oneshot)
 After=network.target
@@ -145,7 +235,6 @@ After=network.target
 Type=oneshot
 ExecStart=/usr/local/libexec/fleetdeck/update
 EOF
-fi
 
 if [[ ! -f /etc/systemd/system/fleetdeck-agent-update.path ]]; then
   cat > /etc/systemd/system/fleetdeck-agent-update.path <<'EOF'
@@ -171,7 +260,7 @@ systemctl enable --now fleetdeck-agent-uninstall.path 2>/dev/null || true
 systemctl enable --now fleetdeck-agent-update.path 2>/dev/null || true
 
 if systemctl list-unit-files fleetdeck-agent.service >/dev/null 2>&1; then
-  systemctl restart fleetdeck-agent.service
+  systemctl start fleetdeck-agent.service
   systemctl --no-pager --full status fleetdeck-agent.service || true
 else
   echo "fleetdeck-agent.service not found — binary upgraded; start the agent manually." >&2
@@ -179,7 +268,7 @@ fi
 
 NEW_VER="unknown"
 if command -v strings >/dev/null 2>&1; then
-  NEW_VER="$(strings /usr/local/bin/fleetdeck-agent 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' | head -n1 || true)"
+  NEW_VER="$(strings "${AGENT_BIN}" 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' | head -n1 || true)"
 fi
 NEW_VER="${NEW_VER:-unknown}"
 echo

@@ -18,6 +18,24 @@
 - Confirm `last_metrics_at` on `GET /api/v1/servers`.
 - Stale values are labeled Delayed/Stale/Offline — they are never presented as current without freshness text.
 
+## Agent RAM grows to multi-GB / host OOM
+
+- Agents **before 0.4.3-dev** created a new Docker `http.Transport` on every Engine API call (stats/inventory), which leaks idle connections and can push RES into gigabytes while CPU stays idle.
+- Upgrade the agent (≥ **0.4.3-dev**): shared Docker HTTP client, capped response reads, heartbeat uses `/_ping` instead of full inventory every tick.
+- Interim: `sudo systemctl restart fleetdeck-agent` frees memory until it grows again; prefer upgrading.
+
+## Two `fleetdeck-agent` processes (root + fleetdeck)
+
+- Systemd unit must run as `User=fleetdeck` (`/etc/systemd/system/fleetdeck-agent.service`). A second process with the same `-state-dir /var/lib/fleetdeck` as **root** is almost always a manual/`sudo` start or leftover — not the update oneshot (that exits).
+- **Upgrade / panel Update agent** (current CDN `upgrade.sh` and agent ≥ **0.4.3-dev** apply path) stops the unit, kills orphans sharing the managed binary/state-dir, then starts a single systemd instance.
+- Interim cleanup if duplicates are already running:
+  ```bash
+  pgrep -a fleetdeck-agent
+  curl -fsSL https://cdn.tarkovbot.com/fleetdeck/upgrade.sh | sudo bash
+  # or: sudo kill <root-pid> && sudo systemctl restart fleetdeck-agent
+  ```
+- Agents ≥ **0.4.3-dev** take an exclusive lock on `$state-dir/agent.lock`; a second instance exits immediately with an error instead of double-reporting and double RAM use. Upgrades must clear orphans first so the new unit can take the lock.
+
 ## Container logs timeout
 
 - Agent must be running and polling `/agent/v1/commands` (every ~2s).
