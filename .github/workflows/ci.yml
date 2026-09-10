@@ -72,6 +72,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare env
+        run: cp .env.example .env
       - name: Validate compose file
         run: docker compose -f deploy/docker-compose.yml config
       - name: Build images

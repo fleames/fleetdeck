@@ -22,7 +22,8 @@ services:
       dockerfile: deploy/Dockerfile.api
     restart: unless-stopped
     env_file:
-      - ../.env
+      - path: ../.env
+        required: false
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-fleetdeck}:${POSTGRES_PASSWORD:-fleetdeck_dev_change_me}@db:5432/${POSTGRES_DB:-fleetdeck}?sslmode=disable
       API_ADDR: ":8080"
