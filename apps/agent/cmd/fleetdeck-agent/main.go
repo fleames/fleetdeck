@@ -19,7 +19,7 @@ import (
 	"github.com/fleetdeck/fleetdeck/apps/agent/internal/collect"
 )
 
-const agentVersion = "0.4.2-dev"
+const agentVersion = "0.4.3-dev"
 
 type enrollResponse struct {
 	ServerID     string `json:"server_id"`
@@ -83,6 +83,13 @@ func main() {
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	unlock, err := acquireInstanceLock(*stateDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "instance lock: %v\n", err)
+		os.Exit(1)
+	}
+	defer unlock()
 
 	var netPrev *collect.NetCounter
 	ticker := time.NewTicker(*interval)
@@ -156,11 +163,10 @@ func reportOnce(ctx context.Context, creds credentials, netPrev *collect.NetCoun
 			fmt.Fprintf(os.Stderr, "metrics flush: %v\n", ferr)
 		}
 	}
-	docker := collect.CollectDocker(ctx)
-	healthy := !docker.Available || docker.DaemonHealthy
+	available, healthy := collect.ProbeDocker(ctx)
 	hb := map[string]any{
 		"agent_version":  agentVersion,
-		"docker_healthy": healthy,
+		"docker_healthy": !available || healthy,
 	}
 	if spool != nil {
 		n, age := spool.Stats()

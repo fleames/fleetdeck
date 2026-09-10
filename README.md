@@ -15,6 +15,8 @@ FleetDeck runs on your machine (or a small home box). Lightweight Go agents on e
 
 ## Screenshots
 
+Live UI captures with **anonymized demo host names** (no real org/domains, IPs, tokens, or enroll one-liners).
+
 ### Dashboard
 
 Fleet-wide health score, online counts, and a live server card grid (CPU / RAM / disk, network, uptime).
@@ -23,7 +25,7 @@ Fleet-wide health score, online counts, and a live server card grid (CPU / RAM /
 
 ### Servers
 
-Enrollment one-liners, agent versions, **Update agent** / **Remove** from the panel.
+Enrollment flow, agent versions, **Update agent** / **Remove** from the panel.
 
 ![FleetDeck servers list](docs/screenshots/servers.png)
 
@@ -137,6 +139,15 @@ Day-to-day on Windows (honors tunnel token if set):
 ```powershell
 .\scripts\start.ps1 -Build
 ```
+
+**Autostart on Windows logon:** enable Docker Desktop “Start Docker Desktop when you log in”, then:
+
+```powershell
+.\scripts\install-autostart.ps1   # Scheduled Task FleetDeck-Autostart
+# .\scripts\uninstall-autostart.ps1
+```
+
+Details: [DEPLOYMENT.md](docs/DEPLOYMENT.md#windows-autostart-logon).
 
 ### 3. First login (local)
 

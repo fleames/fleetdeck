@@ -21,7 +21,7 @@ From the dashboard **Servers** list or server detail, admins/operators can **Upd
 1. If the agent is online, FleetDeck queues `agent.update` with `cdn_base` + `channel` from `AGENT_CDN_BASE` / `AGENT_CDN_CHANNEL` (default `https://cdn.tarkovbot.com/fleetdeck` + `latest`).
 2. The agent (as `fleetdeck`, under `NoNewPrivileges`) downloads `${cdn}/${channel}/linux-{amd64|arm64}` into `/var/lib/fleetdeck/pending-update.bin`, **requires** a matching entry in `${cdn}/${channel}/SHA256SUMS` (fail closed if missing or mismatch), then reports success.
 3. It writes `/var/lib/fleetdeck/UPDATE_REQUESTED`.
-4. `fleetdeck-agent-update.path` runs a root oneshot that applies the staged binary to `/usr/local/bin/fleetdeck-agent` and `systemctl restart fleetdeck-agent` — **credentials under `/var/lib/fleetdeck` are not touched**.
+4. `fleetdeck-agent-update.path` runs a root oneshot that **prefers exec'ing the staged `pending-update.bin -update`** (so the new binary's apply logic runs). That path **stops** `fleetdeck-agent.service`, kills leftover processes for `/usr/local/bin/fleetdeck-agent` / `/var/lib/fleetdeck` (manual root starts), replaces the binary, then **starts** the unit — **credentials under `/var/lib/fleetdeck` are not touched**.
 5. The new process heartbeats with the new `agent_version`.
 
 If the agent is offline, the API returns a clear conflict: wait until online (no offline/force update).
@@ -32,7 +32,7 @@ Panel update requires agent **0.4.2-dev+** with the update path unit. Older host
 curl -fsSL https://cdn.tarkovbot.com/fleetdeck/upgrade.sh | sudo bash
 ```
 
-That replaces the binary, installs missing update/uninstall path units, restarts the service, and leaves `/var/lib/fleetdeck/credentials.json` alone.
+That stops systemd + orphans, replaces the binary, refreshes update/uninstall helpers (including the pending-bin update wrapper), starts the service, and leaves `/var/lib/fleetdeck/credentials.json` alone.
 
 ---
 
@@ -101,8 +101,8 @@ cd apps/agent
 go build -o ../../bin/fleetdeck-agent ./cmd/fleetdeck-agent
 
 # Multi-arch (includes linux/amd64 + linux/arm64)
-./scripts/release-agent.ps1 -Version 0.4.2-dev
-# or: VERSION=0.4.2-dev ./scripts/release-agent.sh
+./scripts/release-agent.ps1 -Version 0.4.3-dev
+# or: VERSION=0.4.3-dev ./scripts/release-agent.sh
 ```
 
 See [RELEASE.md](RELEASE.md). Unit files: `deploy/agent/fleetdeck-agent.service`, `fleetdeck-agent-uninstall.path` / `.service`, `fleetdeck-agent-update.path` / `.service`. Installer: `scripts/install-agent-linux.sh`.
@@ -112,5 +112,5 @@ See [RELEASE.md](RELEASE.md). Unit files: `deploy/agent/fleetdeck-agent.service`
 - Treat agent secrets like host root credentials (`chmod 600` credentials file).
 - One token enrolls one server binding; do not reuse tokens across hosts.
 - Do not mount the Docker socket into the FleetDeck API/web containers.
-- Agent version: `0.4.2-dev`.
+- Agent version: `0.4.3-dev`.
 - Remote update never deletes `credentials.json`.

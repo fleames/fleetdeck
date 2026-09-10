@@ -75,3 +75,27 @@ $env:CLOUDFLARE_API_TOKEN = "..."
 ```
 
 See [REMOTE_AGENTS.md](REMOTE_AGENTS.md).
+
+## Windows autostart (logon)
+
+Compose services use `restart: unless-stopped`, so containers come back when Docker Desktop starts — but Docker itself must be running after reboot.
+
+1. In **Docker Desktop → Settings → General**, enable **Start Docker Desktop when you log in**.
+2. Register a logon Scheduled Task that runs `scripts\start.ps1` (waits for `docker info`, then `compose up`):
+
+```powershell
+.\scripts\install-autostart.ps1
+```
+
+- Task name: **`FleetDeck-Autostart`** (current user, at logon)
+- Remove: `.\scripts\uninstall-autostart.ps1`
+
+Verify without rebooting:
+
+```powershell
+Get-ScheduledTask -TaskName 'FleetDeck-Autostart'
+Start-ScheduledTask -TaskName 'FleetDeck-Autostart'
+docker compose --env-file .env -f deploy/docker-compose.yml ps
+```
+
+After a reboot: sign in, wait for Docker Desktop, then check dashboard http://localhost:3000 and (if tunneled) `$API_PUBLIC_URL/healthz`.

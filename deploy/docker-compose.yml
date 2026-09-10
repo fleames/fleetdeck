@@ -31,7 +31,7 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       AGENT_CDN_BASE: ${AGENT_CDN_BASE:-https://cdn.tarkovbot.com/fleetdeck}
       AGENT_CDN_CHANNEL: ${AGENT_CDN_CHANNEL:-latest}
-      AGENT_VERSION: ${AGENT_VERSION:-0.4.2-dev}
+      AGENT_VERSION: ${AGENT_VERSION:-0.4.3-dev}
       # Optional legacy custom relay (leave empty when using Cloudflare Tunnel)
       RELAY_URL: ${RELAY_URL:-}
       RELAY_TOKEN: ${RELAY_TOKEN:-}

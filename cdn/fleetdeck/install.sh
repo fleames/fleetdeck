@@ -278,9 +278,14 @@ EOF
   cat > /usr/local/libexec/fleetdeck/update <<'EOF'
 #!/bin/bash
 # Triggered by fleetdeck-agent-update.path; delay so agent can report command result.
-# Applies staged binary from /var/lib/fleetdeck/pending-update.bin (credentials untouched).
+# Prefer pending-update.bin so the NEW binary's -update (stop + orphan kill + start) runs
+# on the first panel upgrade after staging.
 set -euo pipefail
 sleep 2
+PENDING=/var/lib/fleetdeck/pending-update.bin
+if [[ -x "$PENDING" && -s "$PENDING" ]]; then
+  exec "$PENDING" -update
+fi
 exec /usr/local/bin/fleetdeck-agent -update
 EOF
   chmod 0755 /usr/local/libexec/fleetdeck/update

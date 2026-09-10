@@ -79,6 +79,10 @@ type ContainerSample struct {
 	PIDs          *int      `json:"pids"`
 }
 
+// Cap Docker Engine responses so a misbehaving stream/huge inspect cannot
+// grow the heap unboundedly (stats/logs paths also use LimitReader).
+const maxDockerResponseBytes = 32 << 20 // 32 MiB
+
 func dockerGET(ctx context.Context, path string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://docker"+path, nil)
 	if err != nil {
@@ -89,7 +93,7 @@ func dockerGET(ctx context.Context, path string, out any) error {
 		return err
 	}
 	defer res.Body.Close()
-	body, err := io.ReadAll(res.Body)
+	body, err := io.ReadAll(io.LimitReader(res.Body, maxDockerResponseBytes))
 	if err != nil {
 		return err
 	}
@@ -100,6 +104,23 @@ func dockerGET(ctx context.Context, path string, out any) error {
 		return nil
 	}
 	return json.Unmarshal(body, out)
+}
+
+// ProbeDocker cheaply checks Engine reachability for heartbeats without pulling
+// full inventory (which used to run every metrics tick and amplified Transport leaks).
+func ProbeDocker(ctx context.Context) (available, healthy bool) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if err := dockerGET(ctx, "/_ping", nil); err != nil {
+		// Older Engines may lack /_ping; fall back to /version.
+		var version struct {
+			Version string `json:"Version"`
+		}
+		if err := dockerGET(ctx, "/version", &version); err != nil {
+			return false, false
+		}
+	}
+	return true, true
 }
 
 func CollectDocker(ctx context.Context) DockerInventory {
@@ -263,9 +284,8 @@ func SampleContainerStats(ctx context.Context) ([]ContainerSample, error) {
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	// Fail fast if Docker is not reachable.
-	var version map[string]any
-	if err := dockerGET(ctx, "/version", &version); err != nil {
-		return nil, err
+	if available, _ := ProbeDocker(ctx); !available {
+		return nil, fmt.Errorf("docker engine unreachable")
 	}
 	var list []struct {
 		ID string `json:"Id"`

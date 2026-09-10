@@ -55,7 +55,7 @@ func Load() (Config, error) {
 		AgentDistDir:       getenv("AGENT_DIST_DIR", "/app/agent-dist"),
 		AgentCDNBase:       strings.TrimRight(getenv("AGENT_CDN_BASE", "https://cdn.tarkovbot.com/fleetdeck"), "/"),
 		AgentCDNChannel:    getenv("AGENT_CDN_CHANNEL", "latest"),
-		AgentVersion:       getenv("AGENT_VERSION", "0.4.2-dev"),
+		AgentVersion:       getenv("AGENT_VERSION", "0.4.3-dev"),
 		RelayURL:           strings.TrimSpace(os.Getenv("RELAY_URL")),
 		RelayToken:         strings.TrimSpace(os.Getenv("RELAY_TOKEN")),
 		RelayLocalURL:      getenv("RELAY_LOCAL_URL", "http://127.0.0.1:8080"),
