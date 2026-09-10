@@ -15,7 +15,7 @@ COPY apps/agent/ ./
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /linux-amd64 ./cmd/fleetdeck-agent
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o /linux-arm64 ./cmd/fleetdeck-agent
 
-FROM alpine:3.21
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=apibuild /fleetdeck-api /app/fleetdeck-api

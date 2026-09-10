@@ -6,7 +6,7 @@ RUN go mod download
 COPY apps/api/ ./
 RUN CGO_ENABLED=0 go build -o /fleetdeck-relay ./cmd/fleetdeck-relay
 
-FROM alpine:3.21
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=build /fleetdeck-relay /app/fleetdeck-relay
