@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# FleetDeck agent installer — hosted on CDN (cdn.tarkovbot.com).
+# FleetDeck agent installer — publish to your CDN prefix (see scripts/publish-cdn.ps1).
 #
-# Root / VPS (sudo):
-#   curl -fsSL https://cdn.tarkovbot.com/fleetdeck/install.sh | sudo bash -s -- --token 'TOKEN'
+# Root (sudo):
+#   curl -fsSL https://cdn.example.com/fleetdeck/install.sh | sudo bash -s -- --token 'TOKEN'
 #
-# Non-root / seedbox (no sudo):
-#   curl -fsSL https://cdn.tarkovbot.com/fleetdeck/install.sh | bash -s -- --user --token 'TOKEN'
+# Non-root / shared host (no sudo):
+#   curl -fsSL https://cdn.example.com/fleetdeck/install.sh | bash -s -- --user --token 'TOKEN'
 #   # or omit --user: non-root automatically selects user mode
+#
+# Override CDN / API: FLEETDECK_CDN, FLEETDECK_URL, FLEETDECK_CHANNEL
 set -euo pipefail
 
-CDN_BASE="${FLEETDECK_CDN:-https://cdn.tarkovbot.com/fleetdeck}"
+CDN_BASE="${FLEETDECK_CDN:-https://cdn.example.com/fleetdeck}"
 CHANNEL="${FLEETDECK_CHANNEL:-latest}"
 API_URL="${FLEETDECK_URL:-}"
 TOKEN=""
@@ -77,7 +79,7 @@ if [[ -z "$API_URL" ]]; then
   fi
 fi
 if [[ -z "$API_URL" ]]; then
-  API_URL="https://agents.tarkovbot.com"
+  API_URL="https://agents.example.com"
 fi
 API_URL="${API_URL%/}"
 

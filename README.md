@@ -1,21 +1,26 @@
 # FleetDeck
 
-**Local-first infrastructure command center** for self-hosted monitoring and Docker management.
+**Self-hosted infrastructure command center** — monitor hosts, manage Docker, and run alerts from one panel.
 
-FleetDeck runs on your machine (or a small home box). Lightweight Go agents on each host dial out with real metrics and Docker inventory — no inbound management ports, no Docker socket in the browser, no fake production data.
+Lightweight Go agents dial out with real metrics and Docker inventory. No inbound management ports on hosts, no Docker socket in the browser, no fake production data.
+
+[![CI](https://github.com/fleames/fleetdeck/actions/workflows/ci.yml/badge.svg)](https://github.com/fleames/fleetdeck/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/)
 
 | | |
 |---|---|
-| **Status** | `0.4.2-dev` — core stack shipped; see [DEFINITION_OF_DONE.md](docs/DEFINITION_OF_DONE.md) for remaining production gates |
+| **Status** | `0.4.3-dev` — core stack shipped; see [DEFINITION_OF_DONE.md](docs/DEFINITION_OF_DONE.md) |
 | **Dashboard** | http://localhost:3000 |
 | **API** | http://localhost:8080/healthz |
-| **Remote agents** | Cloudflare Tunnel + CDN (R2) — [REMOTE_AGENTS.md](docs/REMOTE_AGENTS.md) |
+| **Docs** | [docs/README.md](docs/README.md) |
 
 ---
 
 ## Screenshots
 
-Live UI captures with **anonymized demo host names** (no real org/domains, IPs, tokens, or enroll one-liners).
+Anonymized demo captures (no real org names, IPs, tokens, or enroll one-liners).
 
 ### Dashboard
 
@@ -43,13 +48,13 @@ Rules evaluate real metrics and inventory — acknowledge, silence, resolve.
 
 ---
 
-## What it does
+## Why FleetDeck
 
 - **Monitor hosts** — CPU, memory, disk, network, load, uptime, host identity
 - **Manage Docker remotely** — inventory, container stats, logs, start/stop/restart/pause (confirmed + audited)
 - **Alert on real conditions** — unhealthy containers, resource pressure, offline agents
 - **Operate a fleet from one panel** — enroll, update, and uninstall agents without SSHing for routine work
-- **Stay local-first** — Compose stack on your PC; remote VPS agents reach you through Cloudflare Tunnel
+- **Stay self-hosted** — Docker Compose on your box; remote agents reach you through a tunnel you control
 
 ---
 
@@ -57,7 +62,7 @@ Rules evaluate real metrics and inventory — acknowledge, silence, resolve.
 
 ```mermaid
 flowchart LR
-  subgraph local["Your PC / home host"]
+  subgraph home["Self-hosted control plane"]
     Web["Dashboard<br/>Next.js :3000"]
     API["Monitoring API<br/>Go / Chi :8080"]
     PG[(PostgreSQL 16)]
@@ -65,9 +70,9 @@ flowchart LR
     API --> PG
   end
 
-  subgraph edge["Edge"]
+  subgraph edge["Edge (optional)"]
     CF["Cloudflare Tunnel<br/>agents.example.com"]
-    R2["CDN / R2<br/>install.sh + binaries"]
+    CDN["Your CDN / object storage<br/>install.sh + binaries"]
   end
 
   subgraph hosts["Monitored hosts"]
@@ -78,7 +83,7 @@ flowchart LR
 
   A1 & A2 & A3 -->|HTTPS dial-out| CF
   CF --> API
-  A1 & A2 & A3 -.->|download / update| R2
+  A1 & A2 & A3 -.->|download / update| CDN
 ```
 
 **Security model in one line:** agents dial out; the Docker Engine API stays on the host; the dashboard never sees the socket or agent secrets.
@@ -94,8 +99,7 @@ flowchart LR
 | **Servers** | Enrollment tokens, online/offline, compare, topology, search (`Ctrl+K`) |
 | **Docker** | Containers, compose, images, volumes, networks; logs; confirmed management actions |
 | **Alerts** | Rule engine on live metrics/inventory; acknowledge / silence / resolve |
-| **Notifications** | In-app alerts center |
-| **Agents** | Dial-out Go agent; panel **Update** and **Remove** (uninstall path units); CDN install / upgrade |
+| **Agents** | Dial-out Go agent; panel **Update** and **Remove**; CDN install / upgrade |
 | **Ops** | CSV/JSON export, backup/restore, self-metrics, dark/light theme |
 | **Deploy** | Docker Compose for web + API + Postgres; optional Cloudflare Tunnel profile |
 
@@ -103,26 +107,28 @@ flowchart LR
 
 ## Quick start
 
-### 1. Environment
+### 1. Clone and configure
 
 ```bash
+git clone https://github.com/fleames/fleetdeck.git
+cd fleetdeck
 cp .env.example .env
-# Set SESSION_SECRET to a long random value before any shared use:
+# Set SESSION_SECRET before any shared use:
 #   openssl rand -base64 48
 ```
 
-Key variables (see `.env.example`):
+Key variables (see [`.env.example`](.env.example)):
 
 | Variable | Purpose |
 |----------|---------|
 | `DATABASE_URL` | Postgres connection string |
-| `SESSION_SECRET` | ≥ 32 chars — derives envelope key for `secrets` table (sessions are opaque + DB-hashed) |
+| `SESSION_SECRET` | ≥ 32 chars — derives envelope key for `secrets` table |
 | `WEB_ORIGIN` | Dashboard origins for CORS/cookies |
-| `API_PUBLIC_URL` | URL agents use after enroll (tunnel hostname for remote) |
-| `AGENT_CDN_BASE` / `AGENT_CDN_CHANNEL` | Where panel updates pull binaries |
+| `API_PUBLIC_URL` | URL agents use after enroll (localhost locally; tunnel hostname for remote) |
+| `AGENT_CDN_BASE` / `AGENT_CDN_CHANNEL` | Where panel updates pull binaries (your CDN) |
 | `COOKIE_SECURE` | `false` on plain `http://localhost`; `true` behind HTTPS |
 
-### 2. Full stack (Compose)
+### 2. Start the stack
 
 ```bash
 docker compose -f deploy/docker-compose.yml up -d --build
@@ -134,100 +140,59 @@ docker compose -f deploy/docker-compose.yml up -d --build
 | `api` | **8080** | Monitoring API + agent ingest |
 | `db` | **5433→5432** | PostgreSQL 16 (host 5433 avoids local Postgres clashes) |
 
-Day-to-day on Windows (honors tunnel token if set):
+Open **http://localhost:3000** and create the first admin account (bootstrap). There is **no default password** in images.
+
+Windows helper (optional):
 
 ```powershell
 .\scripts\start.ps1 -Build
 ```
 
-**Autostart on Windows logon:** enable Docker Desktop “Start Docker Desktop when you log in”, then:
+### 3. Enroll a local agent (optional)
 
-```powershell
-.\scripts\install-autostart.ps1   # Scheduled Task FleetDeck-Autostart
-# .\scripts\uninstall-autostart.ps1
+After creating an enrollment token in **Servers → Add server**:
+
+```bash
+cd apps/agent
+go run ./cmd/fleetdeck-agent -api http://localhost:8080 -token <token>
 ```
 
-Details: [DEPLOYMENT.md](docs/DEPLOYMENT.md#windows-autostart-logon).
-
-### 3. First login (local)
-
-On a fresh database the UI prompts **Create admin account** (bootstrap).
-
-If you already bootstrapped during development, sign in with that admin. There is **no default password in images** — change any shared/dev passwords before exposing the stack.
-
-### 4. Cloudflare Tunnel (remote agents)
-
-FleetDeck stays on your PC. Agents reach the API through a tunnel:
-
-```powershell
-$env:CLOUDFLARE_API_TOKEN = "your-api-token"   # Tunnel Edit + DNS Edit
-.\scripts\setup-cloudflare-tunnel.ps1
-```
-
-That creates/reuses tunnel `fleetdeck-home`, points DNS at the API, writes `CLOUDFLARE_TUNNEL_TOKEN` + `API_PUBLIC_URL` into `.env`, and starts Compose with the tunnel profile.
-
-Verify:
-
-```powershell
-curl.exe -sS https://agents.tarkovbot.com/healthz
-```
-
-(Your hostname may differ — use the `API_PUBLIC_URL` from `.env`.)
-
-### 5. Publish agent binaries to CDN (R2)
-
-Set `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` in `.env`, then:
-
-```powershell
-.\scripts\publish-cdn.ps1 -Version 0.4.2-dev
-# Skip upload:  .\scripts\publish-cdn.ps1 -NoUpload
-# Force upload: .\scripts\publish-cdn.ps1 -Upload
-```
-
-Artifacts land under the public CDN prefix (`install.sh`, `upgrade.sh`, `latest/linux-amd64`, `latest/linux-arm64`, …).
+Or install a Linux binary from your CDN / release artifacts — see [docs/AGENT.md](docs/AGENT.md).
 
 ---
 
-## Remote agent install & upgrade
+## Remote agents (tunnel + CDN)
 
-### Install (one-liner)
+For hosts that are not on your LAN, expose the API with a tunnel and host agent binaries on object storage you control.
 
-Dashboard → **Servers → Add server** → copy the enrollment command:
+**Pattern:**
 
-```bash
-curl -fsSL https://cdn.tarkovbot.com/fleetdeck/install.sh | sudo bash -s -- --token 'TOKEN'
+1. Run FleetDeck via Compose on your control-plane host.
+2. Put a **Cloudflare Tunnel** (or reverse proxy) in front of the API → set `API_PUBLIC_URL=https://agents.example.com`.
+3. Publish `install.sh`, `upgrade.sh`, and `linux-{amd64,arm64}` to a public CDN prefix → set `AGENT_CDN_BASE`.
+4. Enroll from the dashboard one-liner (uses your CDN base).
+
+Automated helpers (Windows-oriented; requires your Cloudflare credentials in `.env`):
+
+```powershell
+$env:CLOUDFLARE_API_TOKEN = "your-api-token"   # Tunnel Edit + DNS Edit
+.\scripts\setup-cloudflare-tunnel.ps1 -Hostname agents.example.com
+.\scripts\publish-cdn.ps1 -Version 0.4.3-dev
 ```
 
-Your PC must stay online (Compose + `cloudflared`). Binaries come from CDN; the agent dials `API_PUBLIC_URL` through the tunnel.
-
-### Update from the panel
-
-**Servers** → **Update agent** (online agent, **0.4.2-dev+** with update path units):
-
-1. API queues `agent.update` with `cdn_base` + `channel`
-2. Agent downloads `linux-{amd64|arm64}`, verifies `SHA256SUMS` when present
-3. Privileged oneshot replaces `/usr/local/bin/fleetdeck-agent` and restarts — **credentials under `/var/lib/fleetdeck` are not touched**
-
-### Manual CDN upgrade (older agents)
-
-Hosts still on **0.4.0** (no `agent.update`):
+Verify:
 
 ```bash
-curl -fsSL https://cdn.tarkovbot.com/fleetdeck/upgrade.sh | sudo bash
+curl -fsS https://agents.example.com/healthz
 ```
 
-Keeps credentials and installs missing update/uninstall path units.
-
-### Uninstall
-
-- **Panel Remove** (online): queues `agent.uninstall`, then deletes DB rows
-- **Offline**: Force remove from panel (DB only) + host cleanup:
+Install on a remote host (replace CDN URL and token):
 
 ```bash
-sudo fleetdeck-agent -uninstall
+curl -fsSL https://cdn.example.com/fleetdeck/install.sh | sudo bash -s -- --token 'TOKEN'
 ```
 
-Details: [docs/AGENT.md](docs/AGENT.md), [docs/REMOTE_AGENTS.md](docs/REMOTE_AGENTS.md).
+Scripts under `cdn/fleetdeck/` and `scripts/` may ship with **optional maintainer CDN defaults** for convenience — override with `FLEETDECK_CDN`, `AGENT_CDN_BASE`, and `API_PUBLIC_URL` for your own domains. Details: [REMOTE_AGENTS.md](docs/REMOTE_AGENTS.md).
 
 ---
 
@@ -238,13 +203,13 @@ cp .env.example .env
 docker compose -f deploy/docker-compose.yml up -d db
 
 cd apps/api && go run ./cmd/fleetdeck-api
-cd apps/web && pnpm dev
+cd apps/web && pnpm install && pnpm dev
 
 # After UI enrollment token:
 cd apps/agent && go run ./cmd/fleetdeck-agent -api http://localhost:8080 -token <token>
 ```
 
-Prerequisites: Go 1.26+, Node 24+ / pnpm 10+, Docker. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+Prerequisites: Go 1.26+ (API) / 1.25+ (agent), Node 24+ / pnpm 10+, Docker. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ---
 
@@ -257,7 +222,7 @@ fleetdeck/
 │   ├── agent/        # Go host agent (metrics, Docker, commands)
 │   └── web/          # Next.js dashboard
 ├── deploy/           # Compose, Dockerfiles, systemd units
-├── docs/             # Architecture, security, ops guides + screenshots/
+├── docs/             # Guides + screenshots/
 ├── scripts/          # start, tunnel setup, CDN publish, installers
 ├── cdn/              # CDN packaging helpers
 └── .env.example      # Template — never commit real .env
@@ -271,47 +236,35 @@ fleetdeck/
 - Treat agent `credentials.json` like host root access (`chmod 600`).
 - One enrollment token binds one server — do not reuse across hosts.
 - Do **not** mount the Docker socket into FleetDeck API/web containers.
-- Dashboard must never receive decryptable agent secrets or DB passwords.
 - Set a strong `SESSION_SECRET`; enable `COOKIE_SECURE=true` (and TLS) before any public exposure.
-- Never commit `.env`, `.env.relay`, PEM/keys, or credential files (see `.gitignore`).
+- Never commit `.env`, PEM/keys, or credential files (see `.gitignore`).
 
-More: [docs/SECURITY.md](docs/SECURITY.md), [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md).
+Threat model: [docs/SECURITY.md](docs/SECURITY.md). To report a vulnerability: [SECURITY.md](SECURITY.md).
 
 ---
 
 ## Documentation
 
+Full index: **[docs/README.md](docs/README.md)**
+
 | Doc | Topic |
 |-----|--------|
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, data flow, stack choices |
 | [AGENT.md](docs/AGENT.md) | Agent role, update/uninstall, flags, CDN |
-| [REMOTE_AGENTS.md](docs/REMOTE_AGENTS.md) | Tunnel + R2 + VPS enroll/upgrade |
+| [REMOTE_AGENTS.md](docs/REMOTE_AGENTS.md) | Tunnel + CDN + remote enroll/upgrade |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Compose, env, TLS, backup |
 | [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local split-process workflow |
-| [API.md](docs/API.md) | HTTP API surface |
-| [DATA_MODEL.md](docs/DATA_MODEL.md) | Schema / entities |
-| [UI.md](docs/UI.md) | Dashboard IA and UX principles |
-| [SECURITY.md](docs/SECURITY.md) | Threat model and controls |
-| [SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) | Hardening residuals |
-| [RELEASE.md](docs/RELEASE.md) | Packaging and release |
-| [RELEASE_NOTES.md](docs/RELEASE_NOTES.md) | Changelog (0.4.x-dev) |
 | [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common failures |
-| [DEFINITION_OF_DONE.md](docs/DEFINITION_OF_DONE.md) | Production readiness checklist |
-| [AUDIT.md](docs/AUDIT.md) | Audit log notes |
+| [RELEASE_NOTES.md](docs/RELEASE_NOTES.md) | Changelog (`0.4.x-dev`) |
 
 ---
 
-## Stack
+## Contributing
 
-| Layer | Tech |
-|-------|------|
-| API | Go, Chi, PostgreSQL 16 |
-| Web | Next.js, React, Tailwind, ECharts |
-| Agent | Go (static Linux amd64/arm64) |
-| Deploy | Docker Compose · Cloudflare Tunnel · R2 CDN |
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
 
----
+## License
 
-## License / status
+[MIT](LICENSE) © fleames
 
-Private project — **0.4.2-dev** pre-1.0. Core monitoring, Docker ops, alerts, and remote agent lifecycle are implemented; signed releases and fuller CI remain on the roadmap.
+**Status:** pre-1.0 (`0.4.3-dev`). Core monitoring, Docker ops, alerts, and remote agent lifecycle are implemented; signed releases and broader packaging remain on the roadmap.

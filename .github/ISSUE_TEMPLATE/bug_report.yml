@@ -1,0 +1,79 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. For security issues, use [Security Advisories](https://github.com/fleames/fleetdeck/security/advisories/new) instead.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong in one or two sentences?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps starting from a clean or known state.
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include logs, screenshots, or API responses if helpful (redact tokens/secrets).
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: FleetDeck version
+      description: e.g. 0.4.3-dev / commit SHA
+      placeholder: 0.4.3-dev
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      multiple: true
+      options:
+        - API
+        - Web dashboard
+        - Agent
+        - Docker Compose / deploy
+        - Install / upgrade / CDN scripts
+        - Docs
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Docker Desktop/Engine, Cloudflare Tunnel (yes/no), arch (amd64/arm64)
+      placeholder: "Linux amd64, Compose, Tunnel yes"
+    validations:
+      required: true
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and docs/TROUBLESHOOTING.md
+          required: true
+        - label: I redacted secrets, tokens, and private hostnames from this report
+          required: true

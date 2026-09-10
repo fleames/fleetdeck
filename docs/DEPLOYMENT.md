@@ -65,12 +65,12 @@ fleetdeck.example.com {
 
 Agents should enroll with `-api https://fleetdeck.example.com` (or the API hostname you expose).
 
-## Agent (remote VPS)
+## Agent (remote hosts)
 
 ```powershell
 $env:CLOUDFLARE_API_TOKEN = "..."
-.\scripts\setup-cloudflare-tunnel.ps1   # once
-.\scripts\publish-cdn.ps1 -Upload       # build + upload dist/cdn/fleetdeck/ to R2
+.\scripts\setup-cloudflare-tunnel.ps1 -Hostname agents.example.com   # once
+.\scripts\publish-cdn.ps1 -Upload       # build + upload dist/cdn/fleetdeck/ to your CDN
 .\scripts\start.ps1 -Build              # day-to-day
 ```
 

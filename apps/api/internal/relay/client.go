@@ -18,7 +18,7 @@ import (
 
 // Client dials the public relay and serves proxied agent requests against localURL.
 type Client struct {
-	RelayURL  string // e.g. wss://agents.tarkovbot.com/edge/connect
+	RelayURL  string // e.g. wss://agents.example.com/edge/connect
 	Token     string
 	LocalURL  string // e.g. http://127.0.0.1:8080
 	HTTPClient *http.Client

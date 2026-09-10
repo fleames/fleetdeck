@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# FleetDeck non-root / seedbox installer (no sudo).
+# FleetDeck non-root / shared-host installer (no sudo).
 # Equivalent to:
-#   curl -fsSL https://cdn.tarkovbot.com/fleetdeck/install.sh | bash -s -- --user --token 'TOKEN'
+#   curl -fsSL https://cdn.example.com/fleetdeck/install.sh | bash -s -- --user --token 'TOKEN'
 set -euo pipefail
-CDN_BASE="${FLEETDECK_CDN:-https://cdn.tarkovbot.com/fleetdeck}"
+CDN_BASE="${FLEETDECK_CDN:-https://cdn.example.com/fleetdeck}"
 curl -fsSL "${CDN_BASE}/install.sh" | bash -s -- --user "$@"

@@ -2,8 +2,15 @@
 export const AGENT_PANEL_UPDATE_MIN = "0.4.2";
 
 /** Manual CDN upgrade for hosts too old for panel Update agent (preserves credentials). */
-export const AGENT_MANUAL_UPGRADE_CMD =
-  "curl -fsSL https://cdn.tarkovbot.com/fleetdeck/upgrade.sh | sudo bash";
+export function manualUpgradeCommand(
+  cdnBase = "https://cdn.example.com/fleetdeck",
+): string {
+  const base = cdnBase.replace(/\/+$/, "");
+  return `curl -fsSL ${base}/upgrade.sh | sudo bash`;
+}
+
+/** Default one-liner; prefer `manualUpgradeCommand(configuredCdnBase)` when CDN is known. */
+export const AGENT_MANUAL_UPGRADE_CMD = manualUpgradeCommand();
 
 function parseAgentSemver(
   version: string | null | undefined,

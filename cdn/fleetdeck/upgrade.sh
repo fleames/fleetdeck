@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# FleetDeck agent upgrade — hosted on CDN (cdn.tarkovbot.com).
+# FleetDeck agent upgrade — publish to your CDN prefix (see scripts/publish-cdn.ps1).
 # For hosts on older agents (e.g. 0.4.0) that lack panel `agent.update`.
 # Keeps enrollment credentials; does NOT require a new token.
 #
 # One-liner:
-#   curl -fsSL https://cdn.tarkovbot.com/fleetdeck/upgrade.sh | sudo bash
+#   curl -fsSL https://cdn.example.com/fleetdeck/upgrade.sh | sudo bash
+#
+# Override CDN: FLEETDECK_CDN, FLEETDECK_CHANNEL
 set -euo pipefail
 
-CDN_BASE="${FLEETDECK_CDN:-https://cdn.tarkovbot.com/fleetdeck}"
+CDN_BASE="${FLEETDECK_CDN:-https://cdn.example.com/fleetdeck}"
 CHANNEL="${FLEETDECK_CHANNEL:-latest}"
 
 while [[ $# -gt 0 ]]; do
