@@ -2,7 +2,7 @@
 param(
   [string]$ApiToken = $env:CLOUDFLARE_API_TOKEN,
   [string]$AccountId = $env:CLOUDFLARE_ACCOUNT_ID,
-  [string]$Hostname = "agents.tarkovbot.com",
+  [string]$Hostname = "agents.example.com",
   [string]$TunnelName = "fleetdeck-home",
   [string]$OriginService = "http://api:8080",
   [switch]$SkipStart
@@ -151,7 +151,7 @@ if (-not $AccountId) {
 Write-Host "Account: $AccountId"
 
 if ($Hostname -notmatch '^([^.]+)\.(.+)$') {
-  throw "Hostname must look like agents.tarkovbot.com"
+  throw "Hostname must look like agents.example.com"
 }
 $subdomain = $Matches[1]
 $zoneName = $Matches[2]

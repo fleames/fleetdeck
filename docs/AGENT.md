@@ -18,7 +18,7 @@ The Docker socket stays on the host and is never exposed to browsers.
 
 From the dashboard **Servers** list or server detail, admins/operators can **Update agent**:
 
-1. If the agent is online, FleetDeck queues `agent.update` with `cdn_base` + `channel` from `AGENT_CDN_BASE` / `AGENT_CDN_CHANNEL` (default `https://cdn.tarkovbot.com/fleetdeck` + `latest`).
+1. If the agent is online, FleetDeck queues `agent.update` with `cdn_base` + `channel` from `AGENT_CDN_BASE` / `AGENT_CDN_CHANNEL` (configure your CDN base + `latest`).
 2. The agent (as `fleetdeck`, under `NoNewPrivileges`) downloads `${cdn}/${channel}/linux-{amd64|arm64}` into `/var/lib/fleetdeck/pending-update.bin`, **requires** a matching entry in `${cdn}/${channel}/SHA256SUMS` (fail closed if missing or mismatch), then reports success.
 3. It writes `/var/lib/fleetdeck/UPDATE_REQUESTED`.
 4. `fleetdeck-agent-update.path` runs a root oneshot that **prefers exec'ing the staged `pending-update.bin -update`** (so the new binary's apply logic runs). That path **stops** `fleetdeck-agent.service`, kills leftover processes for `/usr/local/bin/fleetdeck-agent` / `/var/lib/fleetdeck` (manual root starts), replaces the binary, then **starts** the unit — **credentials under `/var/lib/fleetdeck` are not touched**.
@@ -29,7 +29,8 @@ If the agent is offline, the API returns a clear conflict: wait until online (no
 Panel update requires agent **0.4.2-dev+** with the update path unit. Older hosts (e.g. **0.4.0**) should use the manual CDN upgrade (no new enrollment token):
 
 ```bash
-curl -fsSL https://cdn.tarkovbot.com/fleetdeck/upgrade.sh | sudo bash
+curl -fsSL https://cdn.example.com/fleetdeck/upgrade.sh | sudo bash
+# or: FLEETDECK_CDN=https://cdn.example.com/fleetdeck curl -fsSL "$FLEETDECK_CDN/upgrade.sh" | sudo bash
 ```
 
 That stops systemd + orphans, replaces the binary, refreshes update/uninstall helpers (including the pending-bin update wrapper), starts the service, and leaves `/var/lib/fleetdeck/credentials.json` alone.
@@ -58,26 +59,26 @@ Panel remove requires agent **0.4.1-dev+** with the uninstall path unit (re-run 
 
 ---
 
-## CDN install (remote VPS)
+## CDN install (remote hosts)
 
-FleetDeck stays on your PC. Expose the API with a **Cloudflare Tunnel**, publish CDN artifacts, then:
-
-```bash
-curl -fsSL https://cdn.tarkovbot.com/fleetdeck/install.sh | sudo bash -s -- --token 'TOKEN'
-```
-
-Seedbox / no sudo:
+Run the control plane on a host you manage. Expose the API with a **Cloudflare Tunnel** (or reverse proxy), publish CDN artifacts to **your** prefix, then:
 
 ```bash
-curl -fsSL https://cdn.tarkovbot.com/fleetdeck/install.sh | bash -s -- --user --token 'TOKEN'
+curl -fsSL https://cdn.example.com/fleetdeck/install.sh | sudo bash -s -- --token 'TOKEN'
 ```
 
-Setup: [REMOTE_AGENTS.md](REMOTE_AGENTS.md) — run `.\scripts\setup-cloudflare-tunnel.ps1` once. Your PC must be online.
+Shared host / no sudo:
 
-After shipping agent **0.4.2-dev**, republish CDN so VPS hosts get the update helper units:
+```bash
+curl -fsSL https://cdn.example.com/fleetdeck/install.sh | bash -s -- --user --token 'TOKEN'
+```
+
+Setup: [REMOTE_AGENTS.md](REMOTE_AGENTS.md) — run `.\scripts\setup-cloudflare-tunnel.ps1 -Hostname agents.example.com` once. The control plane must stay online.
+
+After shipping agent **0.4.2-dev+**, republish CDN so remote hosts get the update helper units:
 
 ```powershell
-.\scripts\publish-cdn.ps1 -Version 0.4.2-dev -Upload
+.\scripts\publish-cdn.ps1 -Version 0.4.3-dev -Upload
 ```
 
 ---

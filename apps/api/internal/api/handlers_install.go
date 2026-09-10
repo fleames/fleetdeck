@@ -14,11 +14,11 @@ import (
 func (s *Server) handleInstallScript(w http.ResponseWriter, r *http.Request) {
 	cdn := strings.TrimRight(s.cfg.AgentCDNBase, "/")
 	if cdn == "" {
-		cdn = "https://cdn.tarkovbot.com/fleetdeck"
+		cdn = "https://cdn.example.com/fleetdeck"
 	}
 	apiDefault := strings.TrimRight(s.cfg.APIPublicURL, "/")
 	if apiDefault == "" {
-		apiDefault = "https://agents.tarkovbot.com"
+		apiDefault = "https://agents.example.com"
 	}
 	channel := s.cfg.AgentCDNChannel
 	if channel == "" {

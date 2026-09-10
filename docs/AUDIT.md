@@ -1,7 +1,7 @@
 # Repository audit
 
 **Date:** 2026-09-08  
-**Scope:** Home / Projects scan for an existing codebase matching this product goal.  
+**Scope:** Local workspace scan for an existing codebase matching this product goal.  
 **Decision:** **Greenfield** (`fleetdeck`). Do not rewrite or fork existing products.
 
 No repository was attached to the goal. Nearby related codebases were inspected so we prefer incremental engineering where it truly fits.
@@ -10,7 +10,7 @@ No repository was attached to the goal. Nearby related codebases were inspected 
 
 ## Candidates inspected
 
-### 1. `C:\Users\Ryzen3D\pulseops` — closest, still wrong product core
+### 1. Related traffic / threat observability monorepo — closest, still wrong product core
 
 **What it is:** Self-hosted **traffic + threat observability** (log ingest, security center, SSL, reports) with **secondary** SSH-polled system/Docker pages.
 
@@ -20,8 +20,8 @@ No repository was attached to the goal. Nearby related codebases were inspected 
 | Framework | Go 1.25, Fiber, WebSocket hub, DuckDB analytics, SQLite config |
 | Frontend | Next.js App Router, Tailwind, shadcn, ECharts, dark-first |
 | Auth | bcrypt + HMAC JWT; soft-gate until first admin; API keys |
-| Docker | `dockermon` via **SSH** (`docker ps` / `docker stats`) — no agent |
-| Metrics | `sysmon` via SSH; DuckDB `system_metrics`; limited history API |
+| Docker | via **SSH** (`docker ps` / `docker stats`) — no agent |
+| Metrics | via SSH; DuckDB `system_metrics`; limited history API |
 | Alerts | Real rule engine + channels (Discord/Slack/etc.) |
 | Tests / CI | Partial; not a full fleet-agent E2E story |
 | Security model | Avoids Docker socket in the UI; relies on SSH credentials to hosts |
@@ -35,7 +35,7 @@ No repository was attached to the goal. Nearby related codebases were inspected 
 - Alert engine as a first-class service, not UI-only storage
 - Single shared WebSocket fan-out (not per-widget connections)
 
-#### Improve (if we were evolving PulseOps)
+#### Improve (if we were evolving that codebase)
 
 - Replace SSH polling with outbound agent protocol
 - Multi-server registry, enrollment tokens, agent health
@@ -60,36 +60,36 @@ No repository was attached to the goal. Nearby related codebases were inspected 
 - Documented retention strategy and self-observability
 - Management actions with confirmation (read-only default)
 
-**Verdict:** Reusing PulseOps as the base would force a product rewrite under an existing name. **Do not fork.** Borrow patterns selectively.
+**Verdict:** Reusing that product as the base would force a rewrite under an existing name. **Do not fork.** Borrow patterns selectively.
 
 ---
 
-### 2. `C:\Users\Ryzen3D\pulseguard`
+### 2. Related uptime / status-page SaaS monorepo
 
-SaaS-style **uptime / SSL / status pages / billing** monorepo (Next.js + Hono + Prisma + Redis + Stripe + AI RCA). Multi-tenant cloud product shape.
+SaaS-style **uptime / SSL / status pages / billing** (Next.js + Hono + Prisma + Redis + Stripe). Multi-tenant cloud product shape.
 
 **Verdict:** Unsuitable foundation for local-first agent/Docker fleet monitoring.
 
 ---
 
-### 3. `C:\Users\Ryzen3D\sentinel`
+### 3. Related SOC / access-log dashboard
 
-Python Flask **SOC dashboard** for Caddy JSON access logs + SSH brute-force telemetry.
+Python Flask **SOC dashboard** for reverse-proxy JSON access logs + SSH brute-force telemetry.
 
 **Verdict:** Different domain (attack telemetry). Not a fleet/Docker command center.
 
 ---
 
-### 4. `C:\Users\Ryzen3D\Projects\*`
+### 4. Other local projects
 
-No existing monitoring dashboard project matching this goal (`dev-env-migrate`, `developer-demo-studio`, `domain-email-manager`, `gifcast`, `idea-factory`).
+No existing monitoring dashboard project matching this goal among nearby workspaces inspected at the time.
 
 ---
 
 ## Summary matrix
 
-| Requirement | PulseOps | PulseGuard | Sentinel | FleetDeck (new) |
-|-------------|----------|------------|----------|-----------------|
+| Requirement | Threat obs. | Uptime SaaS | SOC logs | FleetDeck (new) |
+|-------------|-------------|-------------|----------|-----------------|
 | Local-first | Yes | Partial | Yes | Yes |
 | Agent-based | No (SSH) | No | Log agents only | Yes |
 | Multi-server fleet UI | Thin | Monitors | Single host focus | Core |

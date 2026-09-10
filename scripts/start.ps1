@@ -81,7 +81,7 @@ try {
 
   if ($token) {
     $api = Get-EnvValue $EnvFile "API_PUBLIC_URL"
-    if (-not $api) { $api = "https://agents.tarkovbot.com" }
+    if (-not $api) { $api = "https://agents.example.com" }
     Write-Host "Waiting for tunnel healthz..."
     $ok = $false
     for ($i = 0; $i -lt 30; $i++) {

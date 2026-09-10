@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 # Upload dist/cdn/fleetdeck/ to Cloudflare R2 via S3-compatible API.
 # Credentials: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
-# Optional: R2_PUBLIC_BASE (default https://cdn.tarkovbot.com/fleetdeck)
+# Optional: R2_PUBLIC_BASE or AGENT_CDN_BASE (default https://cdn.example.com/fleetdeck)
 param(
   [string]$SourceDir = "",
   [string]$KeyPrefix = "fleetdeck/",
@@ -70,7 +70,8 @@ $AccessKey = Resolve-R2Var "R2_ACCESS_KEY_ID"
 $SecretKey = Resolve-R2Var "R2_SECRET_ACCESS_KEY"
 $Bucket = Resolve-R2Var "R2_BUCKET"
 $PublicBase = Resolve-R2Var "R2_PUBLIC_BASE"
-if (-not $PublicBase) { $PublicBase = "https://cdn.tarkovbot.com/fleetdeck" }
+if (-not $PublicBase) { $PublicBase = Resolve-R2Var "AGENT_CDN_BASE" }
+if (-not $PublicBase) { $PublicBase = "https://cdn.example.com/fleetdeck" }
 $PublicBase = $PublicBase.TrimEnd('/')
 
 $missing = @()

@@ -542,7 +542,7 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 
 	cdnBase := strings.TrimRight(s.cfg.AgentCDNBase, "/")
 	if cdnBase == "" {
-		cdnBase = "https://cdn.tarkovbot.com/fleetdeck"
+		cdnBase = "https://cdn.example.com/fleetdeck"
 	}
 	channel := strings.TrimSpace(body.Channel)
 	if channel == "" {

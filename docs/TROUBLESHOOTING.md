@@ -31,7 +31,7 @@
 - Interim cleanup if duplicates are already running:
   ```bash
   pgrep -a fleetdeck-agent
-  curl -fsSL https://cdn.tarkovbot.com/fleetdeck/upgrade.sh | sudo bash
+  curl -fsSL https://cdn.example.com/fleetdeck/upgrade.sh | sudo bash
   # or: sudo kill <root-pid> && sudo systemctl restart fleetdeck-agent
   ```
 - Agents ≥ **0.4.3-dev** take an exclusive lock on `$state-dir/agent.lock`; a second instance exits immediately with an error instead of double-reporting and double RAM use. Upgrades must clear orphans first so the new unit can take the lock.

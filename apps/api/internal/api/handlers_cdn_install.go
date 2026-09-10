@@ -17,7 +17,7 @@ func (s *Server) handleInstallCommand(w http.ResponseWriter, r *http.Request) {
 	}
 	cdn := strings.TrimRight(s.cfg.AgentCDNBase, "/")
 	if cdn == "" {
-		cdn = "https://cdn.tarkovbot.com/fleetdeck"
+		cdn = "https://cdn.example.com/fleetdeck"
 	}
 	channel := s.cfg.AgentCDNChannel
 	if channel == "" {

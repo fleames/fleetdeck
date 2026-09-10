@@ -27,7 +27,7 @@ type Config struct {
 	AgentCDNBase         string
 	AgentCDNChannel      string
 	AgentVersion         string // expected agent release (AGENT_VERSION); matches apps/agent const
-	RelayURL             string // wss://agents.tarkovbot.com/edge/connect — enables outbound edge
+	RelayURL             string // optional legacy relay WebSocket URL — enables outbound edge
 	RelayToken           string
 	RelayLocalURL        string // loopback API for edge proxy (default http://127.0.0.1:8080)
 	AlertWebhookURL      string // optional POST target on alert fire/resolve
@@ -53,7 +53,7 @@ func Load() (Config, error) {
 		AgentOfflineAfter:  time.Duration(getenvInt("AGENT_OFFLINE_AFTER_SECONDS", 45)) * time.Second,
 		CookieSecure:       getenv("COOKIE_SECURE", "false") == "true",
 		AgentDistDir:       getenv("AGENT_DIST_DIR", "/app/agent-dist"),
-		AgentCDNBase:       strings.TrimRight(getenv("AGENT_CDN_BASE", "https://cdn.tarkovbot.com/fleetdeck"), "/"),
+		AgentCDNBase:       strings.TrimRight(getenv("AGENT_CDN_BASE", "https://cdn.example.com/fleetdeck"), "/"),
 		AgentCDNChannel:    getenv("AGENT_CDN_CHANNEL", "latest"),
 		AgentVersion:       getenv("AGENT_VERSION", "0.4.3-dev"),
 		RelayURL:           strings.TrimSpace(os.Getenv("RELAY_URL")),
