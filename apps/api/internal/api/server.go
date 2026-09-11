@@ -116,6 +116,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/search", s.requireUser(s.handleSearch))
 			r.Get("/docker/summary", s.requireUser(s.handleDockerSummary))
 			r.Get("/containers", s.requireUser(s.handleListContainers))
+			r.Post("/containers/clear-stale", s.requireRole("admin", "operator")(s.handleClearStaleContainers))
 			r.Get("/containers/{id}", s.requireUser(s.handleGetContainer))
 			r.Get("/containers/{id}/logs", s.requireUser(s.handleContainerLogs))
 			r.Get("/containers/{id}/env", s.requireUser(s.handleContainerEnv))

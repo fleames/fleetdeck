@@ -24,6 +24,13 @@ type Container = {
 
 type Filter = "all" | "running" | "stopped" | "unhealthy";
 
+/** Host containers safe to docker-rm (matches API clear-stale). */
+const STALE_STATES = new Set(["exited", "dead", "created"]);
+
+function isStaleState(state: string): boolean {
+  return STALE_STATES.has(state.toLowerCase());
+}
+
 function parseFilter(raw: string | null): Filter {
   if (raw === "running" || raw === "stopped" || raw === "unhealthy") return raw;
   return "all";
@@ -43,8 +50,12 @@ function ContainersPageInner() {
   const [rows, setRows] = useState<Container[]>([]);
   const [q, setQ] = useState("");
   const filter = parseFilter(searchParams.get("filter"));
+  const serverId = searchParams.get("server") || searchParams.get("server_id") || "";
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearBusy, setClearBusy] = useState(false);
+  const [clearMsg, setClearMsg] = useState<string | null>(null);
 
   const load = useCallback((opts?: { soft?: boolean }) => {
     api
@@ -82,9 +93,14 @@ function ContainersPageInner() {
     router.replace(qs ? `/containers?${qs}` : "/containers");
   }
 
+  const scopedRows = useMemo(() => {
+    if (!serverId) return rows;
+    return rows.filter((c) => c.server_id === serverId);
+  }, [rows, serverId]);
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return rows.filter((c) => {
+    return scopedRows.filter((c) => {
       if (filter === "running" && c.state !== "running") return false;
       if (filter === "stopped" && c.state === "running") return false;
       if (filter === "unhealthy" && c.health !== "unhealthy") return false;
@@ -96,19 +112,122 @@ function ContainersPageInner() {
         c.compose_project.toLowerCase().includes(needle)
       );
     });
-  }, [rows, q, filter]);
+  }, [scopedRows, q, filter]);
+
+  const staleRows = useMemo(
+    () => scopedRows.filter((c) => isStaleState(c.state)),
+    [scopedRows],
+  );
+  const serverLabel = staleRows[0]?.server_name || scopedRows[0]?.server_name || null;
+
+  async function clearStale() {
+    setClearBusy(true);
+    setClearMsg(null);
+    try {
+      const res = await api.clearStaleContainers(serverId ? { serverId } : undefined);
+      setClearMsg(
+        res.queued > 0
+          ? `Queued removal of ${res.queued} stale container${res.queued === 1 ? "" : "s"}.`
+          : res.message || "No stale containers to remove.",
+      );
+      setConfirmClear(false);
+      load({ soft: true });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Clear stale failed";
+      setClearMsg(
+        /unsupported|unknown command|container\.remove/i.test(msg)
+          ? `${msg} — rebuild/upgrade the agent so it supports container.remove.`
+          : msg,
+      );
+    } finally {
+      setClearBusy(false);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--text-2)]">
-          Explorer
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--text-2)]">
+            Explorer
+          </div>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Containers</h1>
+          <p className="mt-1 text-sm text-[var(--text-1)]">
+            Live inventory from agents. Search is instant over the loaded set.
+            {serverId && serverLabel ? (
+              <>
+                {" "}
+                Scoped to{" "}
+                <Link href={`/servers/${serverId}`} className="text-[var(--accent)] hover:underline">
+                  {serverLabel}
+                </Link>
+                .
+              </>
+            ) : null}
+          </p>
         </div>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">Containers</h1>
-        <p className="mt-1 text-sm text-[var(--text-1)]">
-          Live inventory from agents. Search is instant over the loaded set.
-        </p>
+        <button
+          type="button"
+          className="rounded-md border border-[var(--crit)]/40 px-3 py-1.5 text-xs text-[var(--crit)] hover:bg-[var(--crit)]/10 disabled:opacity-50"
+          disabled={clearBusy || staleRows.length === 0}
+          onClick={() => {
+            setClearMsg(null);
+            setConfirmClear(true);
+          }}
+        >
+          Clear stale{staleRows.length > 0 ? ` (${staleRows.length})` : ""}
+        </button>
       </div>
+
+      {confirmClear && (
+        <section className="rounded-[var(--radius)] border border-[var(--crit)]/40 bg-[var(--crit)]/10 p-4">
+          <h2 className="text-sm font-medium text-[var(--crit)]">
+            Clear {staleRows.length} stale container{staleRows.length === 1 ? "" : "s"}?
+          </h2>
+          <p className="mt-2 text-sm text-[var(--text-1)]">
+            Removes <span className="font-medium">exited</span>, <span className="font-medium">dead</span>, and{" "}
+            <span className="font-medium">created</span> containers via the agent
+            {serverId ? " on this server" : " across the fleet"} (same as{" "}
+            <code className="text-xs">docker rm</code>). Running, paused, and restarting containers are not
+            touched. Requires admin or operator.
+          </p>
+          {staleRows.length > 0 && (
+            <ul className="mt-3 max-h-40 overflow-auto text-xs text-[var(--text-2)]">
+              {staleRows.slice(0, 40).map((c) => (
+                <li key={c.id} className="font-[family-name:var(--font-mono-family)]">
+                  {c.name || c.container_id.slice(0, 12)}
+                  {!serverId ? ` @ ${c.server_name}` : ""} · {c.state}
+                </li>
+              ))}
+              {staleRows.length > 40 && <li>…and {staleRows.length - 40} more</li>}
+            </ul>
+          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={clearBusy || staleRows.length === 0}
+              className="rounded-md bg-[var(--crit)] px-3 py-1.5 text-xs text-white disabled:opacity-60"
+              onClick={() => void clearStale()}
+            >
+              {clearBusy ? "Queuing…" : "Confirm clear stale"}
+            </button>
+            <button
+              type="button"
+              disabled={clearBusy}
+              className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs"
+              onClick={() => setConfirmClear(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </section>
+      )}
+
+      {clearMsg && (
+        <p className="text-sm text-[var(--text-1)]" role="status">
+          {clearMsg}
+        </p>
+      )}
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <input
@@ -135,7 +254,7 @@ function ContainersPageInner() {
         <LoadingBlock label="Loading containers" />
       ) : filtered.length === 0 ? (
         <EmptyBlock>
-          {rows.length === 0 ? "No containers reported yet." : "No containers match this filter."}
+          {scopedRows.length === 0 ? "No containers reported yet." : "No containers match this filter."}
         </EmptyBlock>
       ) : (
         <div className="overflow-hidden rounded-[var(--radius)] border border-[var(--border)]">

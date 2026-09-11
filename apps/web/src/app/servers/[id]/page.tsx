@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { MetricsChart } from "@/components/metrics-chart";
 import { API_URL, apiFetch } from "@/lib/api";
@@ -527,6 +528,12 @@ export default function ServerDetailPage() {
           <div className="mt-4 text-[var(--text-2)]">
             Full container/image/volume drill-down for this server uses the global Docker explorers filtered by server.
           </div>
+          <Link
+            href={`/containers?server=${server.id}`}
+            className="mt-3 inline-block text-sm text-[var(--accent)] hover:underline"
+          >
+            Open containers for this server
+          </Link>
         </div>
       )}
 

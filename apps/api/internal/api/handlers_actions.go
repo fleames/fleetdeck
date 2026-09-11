@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -18,6 +19,19 @@ var allowedContainerActions = map[string]string{
 	"restart": "container.restart",
 	"pause":   "container.pause",
 	"unpause": "container.unpause",
+	"remove":  "container.remove",
+}
+
+// staleContainerStates are host containers safe to docker-rm without killing a running workload.
+var staleContainerStates = []string{"exited", "dead", "created"}
+
+func isStaleContainerState(state string) bool {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "exited", "dead", "created":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
@@ -30,7 +44,7 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
 	action := strings.ToLower(chi.URLParam(r, "action"))
 	cmdType, ok := allowedContainerActions[action]
 	if !ok {
-		httpx.Error(w, http.StatusBadRequest, "validation", "Unsupported action. Use start, stop, restart, pause, or unpause.")
+		httpx.Error(w, http.StatusBadRequest, "validation", "Unsupported action. Use start, stop, restart, pause, unpause, or remove.")
 		return
 	}
 	var body struct {
@@ -43,16 +57,21 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var serverID, agentID uuid.UUID
-	var dockerID, name, serverName string
+	var dockerID, name, serverName, state string
 	err = s.pool.QueryRow(r.Context(), `
-		SELECT c.server_id, a.id, c.container_id, c.name, s.name
+		SELECT c.server_id, a.id, c.container_id, c.name, s.name, c.state
 		FROM containers c
 		JOIN agents a ON a.server_id=c.server_id
 		JOIN servers s ON s.id=c.server_id
 		WHERE c.id=$1`, id,
-	).Scan(&serverID, &agentID, &dockerID, &name, &serverName)
+	).Scan(&serverID, &agentID, &dockerID, &name, &serverName, &state)
 	if err != nil {
 		httpx.Error(w, http.StatusNotFound, "not_found", "Container or agent not found.")
+		return
+	}
+	if action == "remove" && !isStaleContainerState(state) {
+		httpx.Error(w, http.StatusConflict, "not_stale",
+			"Remove is limited to exited, dead, or created containers. Stop the container first.")
 		return
 	}
 
@@ -102,12 +121,134 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
 			map[string]any{"command_id": cmdID}, nil)
 		return
 	}
+	if action == "remove" {
+		s.deleteContainerInventory(r.Context(), serverID, dockerID)
+	}
 	s.auth.Audit(r.Context(), &uid, "container."+action, "container", id.String(), "ok", r.RemoteAddr, map[string]any{
 		"command_id": cmdID,
 	})
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"ok": true, "action": action, "command_id": cmdID, "result": result, "status": status,
 	})
+}
+
+// handleClearStaleContainers queues docker rm for exited/dead/created containers (fleet-wide or one server).
+func (s *Server) handleClearStaleContainers(w http.ResponseWriter, r *http.Request) {
+	u := r.Context().Value(ctxUser).(auth.User)
+	var body struct {
+		Confirm  bool    `json:"confirm"`
+		ServerID *string `json:"server_id"`
+	}
+	if err := httpx.Decode(r, &body); err != nil || !body.Confirm {
+		httpx.Error(w, http.StatusBadRequest, "confirmation_required",
+			"Clear stale requires confirm=true in the request body.")
+		return
+	}
+
+	var serverFilter uuid.UUID
+	hasServer := false
+	if body.ServerID != nil && strings.TrimSpace(*body.ServerID) != "" {
+		id, err := uuid.Parse(strings.TrimSpace(*body.ServerID))
+		if err != nil {
+			httpx.Error(w, http.StatusBadRequest, "validation", "Invalid server_id.")
+			return
+		}
+		serverFilter = id
+		hasServer = true
+	}
+
+	q := `
+		SELECT c.id, c.server_id, a.id, c.container_id, c.name, s.name, c.state
+		FROM containers c
+		JOIN agents a ON a.server_id=c.server_id
+		JOIN servers s ON s.id=c.server_id
+		WHERE lower(c.state) = ANY($1)`
+	args := []any{staleContainerStates}
+	if hasServer {
+		q += ` AND c.server_id=$2`
+		args = append(args, serverFilter)
+	}
+	q += ` ORDER BY s.name, c.name LIMIT 200`
+
+	rows, err := s.pool.Query(r.Context(), q, args...)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", "Could not list stale containers.")
+		return
+	}
+	defer rows.Close()
+
+	type queued struct {
+		ID          uuid.UUID `json:"id"`
+		Name        string    `json:"name"`
+		ServerName  string    `json:"server_name"`
+		State       string    `json:"state"`
+		CommandID   uuid.UUID `json:"command_id"`
+	}
+	out := make([]queued, 0)
+	uid := u.ID
+	for rows.Next() {
+		var panelID, serverID, agentID uuid.UUID
+		var dockerID, name, serverName, state string
+		if err := rows.Scan(&panelID, &serverID, &agentID, &dockerID, &name, &serverName, &state); err != nil {
+			httpx.Error(w, http.StatusInternalServerError, "internal", "Could not list stale containers.")
+			return
+		}
+		payload, _ := json.Marshal(map[string]any{"container_id": dockerID, "action": "remove"})
+		var cmdID uuid.UUID
+		err = s.pool.QueryRow(r.Context(), `
+			INSERT INTO agent_commands (agent_id, server_id, type, payload, expires_at)
+			VALUES ($1,$2,'container.remove',$3::jsonb, now() + interval '90 seconds')
+			RETURNING id`, agentID, serverID, string(payload),
+		).Scan(&cmdID)
+		if err != nil {
+			continue
+		}
+		s.auth.Audit(r.Context(), &uid, "container.remove", "container", panelID.String(), "queued", r.RemoteAddr, map[string]any{
+			"name": name, "server": serverName, "command_id": cmdID, "clear_stale": true,
+		})
+		_, _ = s.pool.Exec(r.Context(), `
+			INSERT INTO infrastructure_events (kind, severity, server_id, container_id, message, context)
+			VALUES ('container.remove','info',$1,$2,$3,$4::jsonb)`,
+			serverID, panelID,
+			"Queued remove (clear stale) for container "+name,
+			string(mustJSON(map[string]any{"command_id": cmdID, "user": u.Email, "clear_stale": true})),
+		)
+		out = append(out, queued{
+			ID: panelID, Name: name, ServerName: serverName, State: state, CommandID: cmdID,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", "Could not list stale containers.")
+		return
+	}
+
+	scope := "fleet"
+	if hasServer {
+		scope = "server"
+	}
+	s.auth.Audit(r.Context(), &uid, "containers.clear_stale", "containers", scope, "ok", r.RemoteAddr, map[string]any{
+		"queued": len(out), "server_id": body.ServerID,
+	})
+
+	msg := "No stale containers to remove."
+	if len(out) > 0 {
+		msg = "Queued removal of stale containers on agents. Inventory refreshes as hosts report."
+	}
+	httpx.JSON(w, http.StatusAccepted, map[string]any{
+		"accepted": true,
+		"queued":   len(out),
+		"scope":    scope,
+		"stale_states": staleContainerStates,
+		"containers": out,
+		"message":  msg,
+	})
+}
+
+func (s *Server) deleteContainerInventory(ctx context.Context, serverID uuid.UUID, dockerContainerID string) {
+	_, _ = s.pool.Exec(ctx, `DELETE FROM containers WHERE server_id=$1 AND container_id=$2`, serverID, dockerContainerID)
+	if s.hub != nil {
+		s.hub.Broadcast("docker.updated", map[string]any{"server_id": serverID})
+	}
 }
 
 func (s *Server) handleContainerEnv(w http.ResponseWriter, r *http.Request) {

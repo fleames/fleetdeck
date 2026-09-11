@@ -2,6 +2,7 @@ package collect
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"testing"
 )
@@ -17,20 +18,24 @@ func TestContainerActionAllowlist(t *testing.T) {
 }
 
 func TestContainerActionPathResolve(t *testing.T) {
-	cases := map[string]string{
-		"start":   "/containers/cid/start",
-		"STOP":    "/containers/cid/stop?t=10",
-		"Restart": "/containers/cid/restart?t=10",
-		"pause":   "/containers/cid/pause",
-		"unpause": "/containers/cid/unpause",
+	cases := map[string]struct {
+		method string
+		path   string
+	}{
+		"start":   {http.MethodPost, "/containers/cid/start"},
+		"STOP":    {http.MethodPost, "/containers/cid/stop?t=10"},
+		"Restart": {http.MethodPost, "/containers/cid/restart?t=10"},
+		"pause":   {http.MethodPost, "/containers/cid/pause"},
+		"unpause": {http.MethodPost, "/containers/cid/unpause"},
+		"remove":  {http.MethodDelete, "/containers/cid"},
 	}
 	for action, want := range cases {
-		got, err := containerActionPath("cid", action)
+		method, path, err := containerActionSpec("cid", action)
 		if err != nil {
 			t.Fatalf("%s: %v", action, err)
 		}
-		if got != want {
-			t.Fatalf("%s: path=%q want %q", action, got, want)
+		if method != want.method || path != want.path {
+			t.Fatalf("%s: method=%q path=%q want %q %q", action, method, path, want.method, want.path)
 		}
 	}
 }

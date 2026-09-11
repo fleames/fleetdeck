@@ -63,6 +63,19 @@ func TestContainerActionRequiresConfirm(t *testing.T) {
 	assertErrorCode(t, rr, "confirmation_required")
 }
 
+func TestClearStaleContainersRequiresConfirm(t *testing.T) {
+	s := &Server{}
+	body := bytes.NewBufferString(`{"confirm":false}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/containers/clear-stale", body)
+	req = req.WithContext(withUser(req.Context(), testAdmin()))
+	rr := httptest.NewRecorder()
+	s.handleClearStaleContainers(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 got %d body=%s", rr.Code, rr.Body.String())
+	}
+	assertErrorCode(t, rr, "confirmation_required")
+}
+
 func TestCompareRequiresTwoServers(t *testing.T) {
 	s := &Server{}
 	body := bytes.NewBufferString(`{"server_ids":["11111111-1111-1111-1111-111111111111"]}`)

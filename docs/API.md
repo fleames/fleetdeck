@@ -88,11 +88,12 @@ Response includes `source` (`raw`|`5m`|`1h`), `truncated` (true when lookback wa
 |--------|------|
 | GET | `/docker/summary` |
 | GET | `/containers` |
+| POST | `/containers/clear-stale` | admin/operator; body `{confirm:true, server_id?}` — queue `docker rm` for exited/dead/created |
 | GET | `/containers/:id` |
 | GET | `/containers/:id/metrics/history` |
 | GET | `/containers/:id/logs` |
 | GET | `/containers/:id/env` | Sensitive keys masked; `?reveal=1` admin + audit |
-| POST | `/containers/:id/actions/:action` | start\|stop\|restart\|pause\|unpause — body `{confirm:true}` |
+| POST | `/containers/:id/actions/:action` | start\|stop\|restart\|pause\|unpause\|remove — body `{confirm:true}`; remove only for exited/dead/created |
 | GET | `/images` |
 | GET | `/volumes` |
 | GET | `/networks` |
@@ -165,7 +166,7 @@ Separate route group with agent auth (not user session):
 | POST | `/agent/v1/heartbeat` |
 | POST | `/agent/v1/metrics` |
 | POST | `/agent/v1/inventory` |
-| GET  | `/agent/v1/commands` or WS command channel |
+| GET  | `/agent/v1/commands` | Optional `?wait=25s` long poll (capped at 30s) |
 | POST | `/agent/v1/commands/:id/result` |
 
 Payload size limits + schema version field required.

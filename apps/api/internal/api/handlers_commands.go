@@ -174,17 +174,6 @@ func (s *Server) handleAgentPollCommands(w http.ResponseWriter, r *http.Request)
 		UPDATE agent_commands SET status='expired'
 		WHERE agent_id=$1 AND status='pending' AND expires_at < now()`, ident.AgentID)
 
-	rows, err := s.pool.Query(r.Context(), `
-		SELECT id, type, payload, created_at, expires_at
-		FROM agent_commands
-		WHERE agent_id=$1 AND status='pending'
-		ORDER BY created_at ASC
-		LIMIT 10`, ident.AgentID)
-	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "internal", "Could not list commands.")
-		return
-	}
-	defer rows.Close()
 	type cmd struct {
 		ID        uuid.UUID       `json:"id"`
 		Type      string          `json:"type"`
@@ -192,21 +181,73 @@ func (s *Server) handleAgentPollCommands(w http.ResponseWriter, r *http.Request)
 		CreatedAt time.Time       `json:"created_at"`
 		ExpiresAt time.Time       `json:"expires_at"`
 	}
-	out := make([]cmd, 0)
-	ids := make([]uuid.UUID, 0)
-	for rows.Next() {
-		var c cmd
-		if err := rows.Scan(&c.ID, &c.Type, &c.Payload, &c.CreatedAt, &c.ExpiresAt); err != nil {
+	wait := agentCommandWait(r)
+	deadline := time.Now().Add(wait)
+	for {
+		rows, err := s.pool.Query(r.Context(), `
+			SELECT id, type, payload, created_at, expires_at
+			FROM agent_commands
+			WHERE agent_id=$1 AND status='pending'
+			ORDER BY created_at ASC
+			LIMIT 10`, ident.AgentID)
+		if err != nil {
 			httpx.Error(w, http.StatusInternalServerError, "internal", "Could not list commands.")
 			return
 		}
-		out = append(out, c)
-		ids = append(ids, c.ID)
+		out := make([]cmd, 0)
+		ids := make([]uuid.UUID, 0)
+		for rows.Next() {
+			var c cmd
+			if err := rows.Scan(&c.ID, &c.Type, &c.Payload, &c.CreatedAt, &c.ExpiresAt); err != nil {
+				rows.Close()
+				httpx.Error(w, http.StatusInternalServerError, "internal", "Could not list commands.")
+				return
+			}
+			out = append(out, c)
+			ids = append(ids, c.ID)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			httpx.Error(w, http.StatusInternalServerError, "internal", "Could not list commands.")
+			return
+		}
+		if len(out) > 0 || wait == 0 || !time.Now().Before(deadline) {
+			for _, id := range ids {
+				_, _ = s.pool.Exec(r.Context(), `UPDATE agent_commands SET status='running' WHERE id=$1 AND status='pending'`, id)
+			}
+			httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+			return
+		}
+		remaining := time.Until(deadline)
+		pause := time.Second
+		if remaining < pause {
+			pause = remaining
+		}
+		timer := time.NewTimer(pause)
+		select {
+		case <-r.Context().Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
 	}
-	for _, id := range ids {
-		_, _ = s.pool.Exec(r.Context(), `UPDATE agent_commands SET status='running' WHERE id=$1 AND status='pending'`, id)
+}
+
+func agentCommandWait(r *http.Request) time.Duration {
+	const maxWait = 30 * time.Second
+	raw := r.URL.Query().Get("wait")
+	if raw == "" {
+		return 0
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"data": out})
+	wait, err := time.ParseDuration(raw)
+	if err != nil || wait <= 0 {
+		return 0
+	}
+	if wait > maxWait {
+		return maxWait
+	}
+	return wait
 }
 
 func (s *Server) handleAgentCommandResult(w http.ResponseWriter, r *http.Request) {
@@ -233,15 +274,28 @@ func (s *Server) handleAgentCommandResult(w http.ResponseWriter, r *http.Request
 	if len(body.Result) > 2_000_000 {
 		body.Result = body.Result[:2_000_000]
 	}
-	tag, err := s.pool.Exec(r.Context(), `
+	var cmdType string
+	var payload []byte
+	var serverID uuid.UUID
+	err = s.pool.QueryRow(r.Context(), `
 		UPDATE agent_commands
 		SET status=$3, result_text=$4, error=$5, completed_at=now()
-		WHERE id=$1 AND agent_id=$2 AND status IN ('pending','running')`,
+		WHERE id=$1 AND agent_id=$2 AND status IN ('pending','running')
+		RETURNING type, payload, server_id`,
 		id, ident.AgentID, status, body.Result, body.Error,
-	)
-	if err != nil || tag.RowsAffected() == 0 {
+	).Scan(&cmdType, &payload, &serverID)
+	if err != nil {
 		httpx.Error(w, http.StatusNotFound, "not_found", "Command not found.")
 		return
+	}
+	if body.OK && cmdType == "container.remove" {
+		var p struct {
+			ContainerID string `json:"container_id"`
+		}
+		_ = json.Unmarshal(payload, &p)
+		if p.ContainerID != "" {
+			s.deleteContainerInventory(r.Context(), serverID, p.ContainerID)
+		}
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
@@ -322,7 +376,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	})
 
 	httpx.JSON(w, http.StatusOK, map[string]any{
-		"q": q,
+		"q":       q,
 		"servers": servers, "containers": containers, "images": images,
 		"compose": compose, "volumes": volumes, "networks": networks,
 		"alerts": alerts, "events": events,

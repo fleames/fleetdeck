@@ -19,7 +19,14 @@ import (
 	"github.com/fleetdeck/fleetdeck/apps/agent/internal/collect"
 )
 
-const agentVersion = "0.4.3-dev"
+const agentVersion = "0.4.5-dev"
+
+const (
+	inventoryInterval    = 60 * time.Second
+	heartbeatInterval    = 30 * time.Second
+	commandLongPollWait  = 25 * time.Second
+	commandRetryInterval = 2 * time.Second
+)
 
 type enrollResponse struct {
 	ServerID     string `json:"server_id"`
@@ -94,25 +101,28 @@ func main() {
 	var netPrev *collect.NetCounter
 	ticker := time.NewTicker(*interval)
 	defer ticker.Stop()
-	invTicker := time.NewTicker(60 * time.Second)
+	invTicker := time.NewTicker(inventoryInterval)
 	defer invTicker.Stop()
-	cmdTicker := time.NewTicker(2 * time.Second)
-	defer cmdTicker.Stop()
+	hbTicker := time.NewTicker(heartbeatInterval)
+	defer hbTicker.Stop()
 
 	fmt.Printf("FleetDeck agent %s reporting to %s every %s\n", agentVersion, creds.APIURL, interval.String())
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	spool := &buffer.Spool{Dir: *stateDir}
 	// Inventory first (host identity), then metrics — so a slow Docker stats path cannot block identity updates.
 	if err := reportInventory(ctx, creds); err != nil {
 		fmt.Fprintf(os.Stderr, "inventory: %v\n", err)
 	}
 	netPrev = reportOnce(ctx, creds, netPrev, spool)
-	pollCommands(ctx, creds)
+	reportHeartbeat(ctx, creds, spool)
+	go runCommandPoller(ctx, creds)
 
 	for {
 		select {
 		case <-stop:
 			fmt.Println("shutting down")
+			cancel()
 			return
 		case <-ticker.C:
 			netPrev = reportOnce(ctx, creds, netPrev, spool)
@@ -120,8 +130,8 @@ func main() {
 			if err := reportInventory(ctx, creds); err != nil {
 				fmt.Fprintf(os.Stderr, "inventory: %v\n", err)
 			}
-		case <-cmdTicker.C:
-			pollCommands(ctx, creds)
+		case <-hbTicker.C:
+			reportHeartbeat(ctx, creds, spool)
 		}
 	}
 }
@@ -163,7 +173,12 @@ func reportOnce(ctx context.Context, creds credentials, netPrev *collect.NetCoun
 			fmt.Fprintf(os.Stderr, "metrics flush: %v\n", ferr)
 		}
 	}
+	return next
+}
+
+func reportHeartbeat(ctx context.Context, creds credentials, spool *buffer.Spool) {
 	available, healthy := collect.ProbeDocker(ctx)
+	bearer := creds.PublicID + ":" + creds.Secret
 	hb := map[string]any{
 		"agent_version":  agentVersion,
 		"docker_healthy": !available || healthy,
@@ -176,7 +191,6 @@ func reportOnce(ctx context.Context, creds credentials, netPrev *collect.NetCoun
 	if err := postJSON(creds.APIURL+"/agent/v1/heartbeat", bearer, hb, nil); err != nil {
 		fmt.Fprintf(os.Stderr, "heartbeat: %v\n", err)
 	}
-	return next
 }
 
 func reportInventory(ctx context.Context, creds credentials) error {
@@ -204,7 +218,33 @@ func reportInventory(ctx context.Context, creds credentials) error {
 	return postJSON(creds.APIURL+"/agent/v1/inventory", creds.PublicID+":"+creds.Secret, payload, nil)
 }
 
-func pollCommands(ctx context.Context, creds credentials) {
+func runCommandPoller(ctx context.Context, creds credentials) {
+	for ctx.Err() == nil {
+		started := time.Now()
+		err := pollCommands(ctx, creds)
+		if ctx.Err() != nil {
+			return
+		}
+		// Avoid a tight loop against an older API that ignores the long-poll wait,
+		// and back off transient failures without adding a separate retry storm.
+		delay := commandRetryInterval - time.Since(started)
+		if err != nil {
+			delay = commandRetryInterval
+		}
+		if delay <= 0 {
+			continue
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
+}
+
+func pollCommands(ctx context.Context, creds credentials) error {
 	var resp struct {
 		Data []struct {
 			ID      string          `json:"id"`
@@ -212,8 +252,9 @@ func pollCommands(ctx context.Context, creds credentials) {
 			Payload json.RawMessage `json:"payload"`
 		} `json:"data"`
 	}
-	if err := getJSON(creds.APIURL+"/agent/v1/commands", creds.PublicID+":"+creds.Secret, &resp); err != nil {
-		return
+	url := fmt.Sprintf("%s/agent/v1/commands?wait=%s", creds.APIURL, commandLongPollWait)
+	if err := getJSON(ctx, url, creds.PublicID+":"+creds.Secret, &resp); err != nil {
+		return err
 	}
 	for _, cmd := range resp.Data {
 		ok := true
@@ -235,7 +276,7 @@ func pollCommands(ctx context.Context, creds credentials) {
 			} else {
 				result = text
 			}
-		case "container.start", "container.stop", "container.restart", "container.pause", "container.unpause":
+		case "container.start", "container.stop", "container.restart", "container.pause", "container.unpause", "container.remove":
 			var p struct {
 				ContainerID string `json:"container_id"`
 				Action      string `json:"action"`
@@ -322,6 +363,7 @@ func pollCommands(ctx context.Context, creds credentials) {
 			}
 		}
 	}
+	return nil
 }
 
 func enroll(apiURL, token, stateDir string) (credentials, error) {
@@ -397,15 +439,15 @@ func postJSON(url, bearer string, payload any, out any) error {
 	return json.Unmarshal(body, out)
 }
 
-func getJSON(url, bearer string, out any) error {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func getJSON(ctx context.Context, url, bearer string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{Timeout: commandLongPollWait + 10*time.Second}
 	res, err := client.Do(req)
 	if err != nil {
 		return err

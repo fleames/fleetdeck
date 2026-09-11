@@ -34,6 +34,11 @@ type Container = {
 type EnvEntry = { key: string; value: string; sensitive: boolean; masked: boolean };
 
 const ACTIONS = ["start", "stop", "restart", "pause", "unpause"] as const;
+const STALE_STATES = new Set(["exited", "dead", "created"]);
+
+function isStaleState(state: string): boolean {
+  return STALE_STATES.has(state.toLowerCase());
+}
 
 function levelClass(line: string): string {
   const u = line.toUpperCase();
@@ -52,7 +57,7 @@ export default function ContainerDetailPage() {
   const [wrap, setWrap] = useState(true);
   const [filter, setFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<(typeof ACTIONS)[number] | null>(null);
+  const [pendingAction, setPendingAction] = useState<(typeof ACTIONS)[number] | "remove" | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [env, setEnv] = useState<EnvEntry[] | null>(null);
@@ -94,7 +99,7 @@ export default function ContainerDetailPage() {
     }
   }
 
-  async function runAction(action: (typeof ACTIONS)[number]) {
+  async function runAction(action: (typeof ACTIONS)[number] | "remove") {
     setActionBusy(true);
     setActionMsg(null);
     try {
@@ -112,13 +117,22 @@ export default function ContainerDetailPage() {
           : `${action} completed.`,
       );
       setPendingAction(null);
+      if (action === "remove" && res.ok) {
+        window.location.href = "/containers";
+        return;
+      }
       const refreshed = await fetch(`${API_URL}/api/v1/containers/${id}`, {
         credentials: "include",
         cache: "no-store",
       });
       if (refreshed.ok) setC(await refreshed.json());
     } catch (e) {
-      setActionMsg(e instanceof Error ? e.message : "Action failed");
+      const msg = e instanceof Error ? e.message : "Action failed";
+      setActionMsg(
+        /unsupported|unknown command|container\.remove/i.test(msg)
+          ? `${msg} — rebuild/upgrade the agent so it supports container.remove.`
+          : msg,
+      );
     } finally {
       setActionBusy(false);
     }
@@ -211,18 +225,46 @@ export default function ContainerDetailPage() {
               {a}
             </button>
           ))}
+          {isStaleState(c.state) && (
+            <button
+              type="button"
+              className="rounded-md border border-[var(--crit)]/40 px-3 py-1.5 text-xs text-[var(--crit)] hover:bg-[var(--crit)]/10 disabled:opacity-50"
+              disabled={actionBusy}
+              onClick={() => setPendingAction("remove")}
+            >
+              Remove
+            </button>
+          )}
         </div>
         {actionMsg && <p className="mt-3 text-sm text-[var(--text-1)]">{actionMsg}</p>}
         {pendingAction && (
-          <div className="mt-4 rounded-md border border-[var(--warn)]/40 bg-[var(--warn)]/10 p-3">
+          <div
+            className={`mt-4 rounded-md border p-3 ${
+              pendingAction === "remove"
+                ? "border-[var(--crit)]/40 bg-[var(--crit)]/10"
+                : "border-[var(--warn)]/40 bg-[var(--warn)]/10"
+            }`}
+          >
             <p className="text-sm text-[var(--text-0)]">
-              Confirm <span className="font-medium capitalize">{pendingAction}</span> on{" "}
-              <span className="font-[family-name:var(--font-mono-family)]">{c.name}</span>?
+              {pendingAction === "remove" ? (
+                <>
+                  Confirm <span className="font-medium">remove</span> of{" "}
+                  <span className="font-[family-name:var(--font-mono-family)]">{c.name}</span>? This deletes
+                  the exited/dead/created container on the host (docker rm).
+                </>
+              ) : (
+                <>
+                  Confirm <span className="font-medium capitalize">{pendingAction}</span> on{" "}
+                  <span className="font-[family-name:var(--font-mono-family)]">{c.name}</span>?
+                </>
+              )}
             </p>
             <div className="mt-3 flex gap-2">
               <button
                 type="button"
-                className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs text-white disabled:opacity-60"
+                className={`rounded-md px-3 py-1.5 text-xs text-white disabled:opacity-60 ${
+                  pendingAction === "remove" ? "bg-[var(--crit)]" : "bg-[var(--accent)]"
+                }`}
                 disabled={actionBusy}
                 onClick={() => void runAction(pendingAction)}
               >

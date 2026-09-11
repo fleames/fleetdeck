@@ -347,7 +347,20 @@ func (s *Server) handleAgentInventory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	_ = seenContainers
+	// Drop inventory rows for containers no longer present on the host (when Docker reported).
+	if dockerAvailable {
+		if len(seenContainers) == 0 {
+			_, err = tx.Exec(ctx, `DELETE FROM containers WHERE server_id=$1`, ident.ServerID)
+		} else {
+			_, err = tx.Exec(ctx, `
+				DELETE FROM containers WHERE server_id=$1 AND NOT (container_id = ANY($2))`,
+				ident.ServerID, seenContainers)
+		}
+		if err != nil {
+			httpx.Error(w, http.StatusInternalServerError, "internal", "Could not reconcile containers.")
+			return
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "internal", "Could not ingest inventory.")
 		return

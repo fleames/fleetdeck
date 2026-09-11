@@ -9,31 +9,34 @@ import (
 	"strings"
 )
 
-func containerActionPath(containerID, action string) (string, error) {
+func containerActionSpec(containerID, action string) (method, path string, err error) {
 	action = strings.ToLower(action)
 	switch action {
 	case "start":
-		return "/containers/" + containerID + "/start", nil
+		return http.MethodPost, "/containers/" + containerID + "/start", nil
 	case "stop":
-		return "/containers/" + containerID + "/stop?t=10", nil
+		return http.MethodPost, "/containers/" + containerID + "/stop?t=10", nil
 	case "restart":
-		return "/containers/" + containerID + "/restart?t=10", nil
+		return http.MethodPost, "/containers/" + containerID + "/restart?t=10", nil
 	case "pause":
-		return "/containers/" + containerID + "/pause", nil
+		return http.MethodPost, "/containers/" + containerID + "/pause", nil
 	case "unpause":
-		return "/containers/" + containerID + "/unpause", nil
+		return http.MethodPost, "/containers/" + containerID + "/unpause", nil
+	case "remove":
+		// Non-forced delete: Docker allows exited/dead/created; running returns 409.
+		return http.MethodDelete, "/containers/" + containerID, nil
 	default:
-		return "", fmt.Errorf("unsupported action %q", action)
+		return "", "", fmt.Errorf("unsupported action %q", action)
 	}
 }
 
 // ContainerAction runs a Docker Engine lifecycle action against a container.
 func ContainerAction(ctx context.Context, containerID, action string) error {
-	path, err := containerActionPath(containerID, action)
+	method, path, err := containerActionSpec(containerID, action)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://docker"+path, nil)
+	req, err := http.NewRequestWithContext(ctx, method, "http://docker"+path, nil)
 	if err != nil {
 		return err
 	}
@@ -43,6 +46,11 @@ func ContainerAction(ctx context.Context, containerID, action string) error {
 	}
 	defer res.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 64_000))
+	action = strings.ToLower(action)
+	// Already gone is success for remove (idempotent clear-stale).
+	if action == "remove" && res.StatusCode == http.StatusNotFound {
+		return nil
+	}
 	// 204 No Content and 304 Not Modified are success for Docker lifecycle.
 	if res.StatusCode >= 300 && res.StatusCode != 304 {
 		return fmt.Errorf("docker %s HTTP %d: %s", action, res.StatusCode, strings.TrimSpace(string(body)))

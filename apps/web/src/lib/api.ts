@@ -235,6 +235,27 @@ export const api = {
       }[];
       meta: { total: number };
     }>("/api/v1/containers"),
+  clearStaleContainers: (opts?: { serverId?: string }) =>
+    request<{
+      accepted: boolean;
+      queued: number;
+      scope: string;
+      stale_states: string[];
+      containers: {
+        id: string;
+        name: string;
+        server_name: string;
+        state: string;
+        command_id: string;
+      }[];
+      message: string;
+    }>("/api/v1/containers/clear-stale", {
+      method: "POST",
+      body: JSON.stringify({
+        confirm: true,
+        ...(opts?.serverId ? { server_id: opts.serverId } : {}),
+      }),
+    }),
   images: () =>
     request<{
       data: {
