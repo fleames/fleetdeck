@@ -7,7 +7,7 @@ The FleetDeck agent runs on each monitored host. It:
 - Collects system metrics (CPU, memory, disk, network, load, uptime, host identity)
 - Collects Docker inventory and container stats via the **local** Docker Engine API
 - Authenticates to the Monitoring API with enrollment-issued credentials
-- Polls for commands (logs, inspect, start/stop/restart/pause/unpause/**remove**, **uninstall**, **update**)
+- Polls for commands (logs with optional `since`, inspect, start/stop/restart/pause/unpause/**remove**, **compose** up/down/start/stop/restart/pull, **uninstall**, **update**)
 - **Dials out** — no inbound management port is required on the host
 
 The Docker socket stays on the host and is never exposed to browsers.

@@ -156,7 +156,7 @@ func CollectDocker(ctx context.Context) DockerInventory {
 		return inv
 	}
 
-	projects := map[string]struct{}{}
+	projects := map[string]string{} // project -> rollup status
 	for _, c := range containers {
 		name := ""
 		if len(c.Names) > 0 {
@@ -181,7 +181,7 @@ func CollectDocker(ctx context.Context) DockerInventory {
 		project := labels["com.docker.compose.project"]
 		service := labels["com.docker.compose.service"]
 		if project != "" {
-			projects[project] = struct{}{}
+			projects[project] = mergeComposeStatus(projects[project], c.State)
 		}
 		created := time.Unix(c.Created, 0).UTC()
 		info := ContainerInfo{
@@ -221,8 +221,11 @@ func CollectDocker(ctx context.Context) DockerInventory {
 		}
 		inv.Containers = append(inv.Containers, info)
 	}
-	for p := range projects {
-		inv.ComposeProjects = append(inv.ComposeProjects, ComposeProject{ProjectName: p, Status: "detected"})
+	for p, status := range projects {
+		if status == "" {
+			status = "detected"
+		}
+		inv.ComposeProjects = append(inv.ComposeProjects, ComposeProject{ProjectName: p, Status: status})
 	}
 
 	var images []struct {
@@ -357,4 +360,35 @@ func calcCPUPercent(total, preTotal, system, preSystem uint64, online uint32, pe
 		return (cpuDelta / systemDelta) * cores * 100.0
 	}
 	return 0
+}
+
+func mergeComposeStatus(current, containerState string) string {
+	st := strings.ToLower(strings.TrimSpace(containerState))
+	rank := func(s string) int {
+		switch s {
+		case "unhealthy", "dead":
+			return 5
+		case "exited", "created":
+			return 4
+		case "paused":
+			return 3
+		case "restarting":
+			return 2
+		case "running":
+			return 1
+		default:
+			return 0
+		}
+	}
+	next := st
+	if next == "" {
+		next = "detected"
+	}
+	if rank(next) >= rank(current) {
+		return next
+	}
+	if current == "" {
+		return next
+	}
+	return current
 }

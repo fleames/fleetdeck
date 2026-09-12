@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { API_URL, apiFetch } from "@/lib/api";
 import { StatusPill } from "@/components/status-pill";
+import { ContainerLogViewer } from "@/components/container-log-viewer";
 import { formatBytes } from "@/lib/format";
 
 type Container = {
@@ -40,22 +41,9 @@ function isStaleState(state: string): boolean {
   return STALE_STATES.has(state.toLowerCase());
 }
 
-function levelClass(line: string): string {
-  const u = line.toUpperCase();
-  if (u.includes("ERROR") || u.includes("FATAL") || u.includes("CRITICAL")) return "text-[var(--crit)]";
-  if (u.includes("WARN")) return "text-[var(--warn)]";
-  if (u.includes("DEBUG")) return "text-[var(--text-2)]";
-  return "text-[var(--text-1)]";
-}
-
 export default function ContainerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [c, setC] = useState<Container | null>(null);
-  const [logs, setLogs] = useState<string[]>([]);
-  const [logError, setLogError] = useState<string | null>(null);
-  const [loadingLogs, setLoadingLogs] = useState(false);
-  const [wrap, setWrap] = useState(true);
-  const [filter, setFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<(typeof ACTIONS)[number] | "remove" | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
@@ -80,24 +68,6 @@ export default function ContainerDetailPage() {
     }, 0);
     return () => window.clearTimeout(boot);
   }, [id]);
-
-  async function loadLogs() {
-    setLoadingLogs(true);
-    setLogError(null);
-    try {
-      const res = await fetch(`${API_URL}/api/v1/containers/${id}/logs?tail=300`, {
-        credentials: "include",
-        cache: "no-store",
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.message ?? "Could not fetch logs");
-      setLogs(data.lines ?? []);
-    } catch (e) {
-      setLogError(e instanceof Error ? e.message : "Log fetch failed");
-    } finally {
-      setLoadingLogs(false);
-    }
-  }
 
   async function runAction(action: (typeof ACTIONS)[number] | "remove") {
     setActionBusy(true);
@@ -167,8 +137,6 @@ export default function ContainerDetailPage() {
     );
   }
   if (!c) return <div className="h-64 animate-pulse rounded-[var(--radius)] bg-[var(--bg-2)]" />;
-
-  const filtered = logs.filter((l) => !filter || l.toLowerCase().includes(filter.toLowerCase()));
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -343,55 +311,7 @@ export default function ContainerDetailPage() {
         )}
       </section>
 
-      <section className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-1)] p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Logs</h2>
-          <div className="flex flex-wrap gap-2">
-            <input
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              placeholder="Filter…"
-              className="rounded-md border border-[var(--border)] bg-[var(--bg-2)] px-2 py-1 text-xs"
-            />
-            <button
-              type="button"
-              className="rounded-md border border-[var(--border)] px-2 py-1 text-xs"
-              onClick={() => setWrap((v) => !v)}
-            >
-              {wrap ? "Unwrap" : "Wrap"}
-            </button>
-            <button
-              type="button"
-              className="rounded-md bg-[var(--accent)] px-3 py-1 text-xs text-white disabled:opacity-60"
-              disabled={loadingLogs}
-              onClick={() => void loadLogs()}
-            >
-              {loadingLogs ? "Fetching…" : "Fetch logs"}
-            </button>
-          </div>
-        </div>
-        {logError && (
-          <div className="mb-3 rounded-md border border-[var(--crit)]/40 bg-[var(--crit)]/10 px-3 py-2 text-sm text-[var(--crit)]">
-            {logError}
-          </div>
-        )}
-        <pre
-          className={`max-h-[480px] overflow-auto rounded-md bg-[var(--bg-0)] p-3 font-[family-name:var(--font-mono-family)] text-xs ${
-            wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"
-          }`}
-        >
-          {filtered.length === 0
-            ? "No logs loaded yet. Fetch logs from the agent (read-only Docker API on the host)."
-            : filtered.map((line, i) => (
-                <div key={i} className={levelClass(line)}>
-                  {line}
-                </div>
-              ))}
-        </pre>
-        <p className="mt-2 text-[11px] text-[var(--text-2)]">
-          Logs are rendered as plain text only — HTML/JS from containers cannot execute in the UI.
-        </p>
-      </section>
+      <ContainerLogViewer key={id} containerId={id} maxHeightClass="max-h-[480px]" />
     </div>
   );
 }

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { API_URL, apiFetch } from "@/lib/api";
+import { API_URL } from "@/lib/api";
+import { ContainerLogViewer } from "@/components/container-log-viewer";
 
 type ContainerRow = {
   id: string;
@@ -12,21 +13,10 @@ type ContainerRow = {
   image_ref: string;
 };
 
-function levelClass(line: string): string {
-  const u = line.toUpperCase();
-  if (u.includes("ERROR") || u.includes("FATAL") || u.includes("CRITICAL")) return "text-[var(--crit)]";
-  if (u.includes("WARN")) return "text-[var(--warn)]";
-  if (u.includes("DEBUG")) return "text-[var(--text-2)]";
-  return "text-[var(--text-1)]";
-}
-
 export default function LogsPage() {
   const [containers, setContainers] = useState<ContainerRow[]>([]);
   const [selected, setSelected] = useState("");
-  const [lines, setLines] = useState<string[]>([]);
-  const [filter, setFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const boot = window.setTimeout(() => {
@@ -42,24 +32,6 @@ export default function LogsPage() {
     return () => window.clearTimeout(boot);
   }, []);
 
-  async function fetchLogs() {
-    if (!selected) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await apiFetch(`/api/v1/containers/${selected}/logs?tail=300`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.message ?? "Could not fetch logs");
-      setLines(data.lines ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Log fetch failed");
-      setLines([]);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const filtered = lines.filter((l) => !filter || l.toLowerCase().includes(filter.toLowerCase()));
   const current = containers.find((c) => c.id === selected);
 
   return (
@@ -70,7 +42,7 @@ export default function LogsPage() {
         </div>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Logs</h1>
         <p className="mt-1 text-sm text-[var(--text-1)]">
-          Container logs via the host agent. Rendered as plain text only — never as HTML.
+          Container logs via the host agent. Follow, filter, and severity chips — plain text only.
         </p>
       </div>
 
@@ -90,20 +62,6 @@ export default function LogsPage() {
             ))}
           </select>
         </label>
-        <input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter lines…"
-          className="min-w-[160px] flex-1 rounded-md border border-[var(--border)] bg-[var(--bg-2)] px-3 py-2 text-sm"
-        />
-        <button
-          type="button"
-          disabled={!selected || busy}
-          onClick={() => void fetchLogs()}
-          className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50"
-        >
-          {busy ? "Fetching…" : "Fetch logs"}
-        </button>
         {current && (
           <Link href={`/containers/${current.id}`} className="text-xs text-[var(--accent)] hover:underline">
             Open detail
@@ -117,15 +75,13 @@ export default function LogsPage() {
         </div>
       )}
 
-      <pre className="max-h-[560px] overflow-auto rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-0)] p-4 font-[family-name:var(--font-mono-family)] text-xs">
-        {filtered.length === 0
-          ? "No log lines loaded. Select a container and fetch from the agent."
-          : filtered.map((line, i) => (
-              <div key={i} className={levelClass(line)}>
-                {line}
-              </div>
-            ))}
-      </pre>
+      {selected ? (
+        <ContainerLogViewer key={selected} containerId={selected} />
+      ) : (
+        <div className="rounded-[var(--radius)] border border-dashed border-[var(--border-strong)] px-5 py-10 text-center text-sm text-[var(--text-2)]">
+          Select a container to load logs.
+        </div>
+      )}
     </div>
   );
 }

@@ -91,14 +91,14 @@ Response includes `source` (`raw`|`5m`|`1h`), `truncated` (true when lookback wa
 | POST | `/containers/clear-stale` | admin/operator; body `{confirm:true, server_id?}` — queue `docker rm` for exited/dead/created |
 | GET | `/containers/:id` |
 | GET | `/containers/:id/metrics/history` |
-| GET | `/containers/:id/logs` |
+| GET | `/containers/:id/logs` | Query `tail` (≤2000), optional `since` (unix seconds) for follow |
 | GET | `/containers/:id/env` | Sensitive keys masked; `?reveal=1` admin + audit |
 | POST | `/containers/:id/actions/:action` | start\|stop\|restart\|pause\|unpause\|remove — body `{confirm:true}`; remove only for exited/dead/created |
 | GET | `/images` |
 | GET | `/volumes` |
 | GET | `/networks` |
 | GET | `/compose` |
-| GET | `/compose/:id` |
+| POST | `/compose/:id/actions/:action` | up\|down\|start\|stop\|restart\|pull — body `{confirm:true}` |
 
 Sensitive env vars in container detail: **masked by default**; `?reveal_env=1` requires elevated role + audit.
 

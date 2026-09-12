@@ -22,6 +22,15 @@ var allowedContainerActions = map[string]string{
 	"remove":  "container.remove",
 }
 
+var allowedComposeActions = map[string]string{
+	"up":      "compose.up",
+	"down":    "compose.down",
+	"start":   "compose.start",
+	"stop":    "compose.stop",
+	"restart": "compose.restart",
+	"pull":    "compose.pull",
+}
+
 // staleContainerStates are host containers safe to docker-rm without killing a running workload.
 var staleContainerStates = []string{"exited", "dead", "created"}
 
@@ -129,6 +138,104 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
 	})
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"ok": true, "action": action, "command_id": cmdID, "result": result, "status": status,
+	})
+}
+
+func (s *Server) handleComposeAction(w http.ResponseWriter, r *http.Request) {
+	u := r.Context().Value(ctxUser).(auth.User)
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "validation", "Invalid compose project id.")
+		return
+	}
+	action := strings.ToLower(chi.URLParam(r, "action"))
+	cmdType, ok := allowedComposeActions[action]
+	if !ok {
+		httpx.Error(w, http.StatusBadRequest, "validation",
+			"Unsupported action. Use up, down, start, stop, restart, or pull.")
+		return
+	}
+	var body struct {
+		Confirm bool `json:"confirm"`
+	}
+	if err := httpx.Decode(r, &body); err != nil || !body.Confirm {
+		httpx.Error(w, http.StatusBadRequest, "confirmation_required",
+			"Compose actions require confirm=true in the request body.")
+		return
+	}
+
+	var serverID, agentID uuid.UUID
+	var projectName, serverName string
+	err = s.pool.QueryRow(r.Context(), `
+		SELECT p.server_id, a.id, p.project_name, s.name
+		FROM compose_projects p
+		JOIN agents a ON a.server_id=p.server_id
+		JOIN servers s ON s.id=p.server_id
+		WHERE p.id=$1`, id,
+	).Scan(&serverID, &agentID, &projectName, &serverName)
+	if err != nil {
+		httpx.Error(w, http.StatusNotFound, "not_found", "Compose project or agent not found.")
+		return
+	}
+
+	payload, _ := json.Marshal(map[string]any{"project_name": projectName, "action": action})
+	var cmdID uuid.UUID
+	err = s.pool.QueryRow(r.Context(), `
+		INSERT INTO agent_commands (agent_id, server_id, type, payload, expires_at)
+		VALUES ($1,$2,$3,$4::jsonb, now() + interval '5 minutes')
+		RETURNING id`, agentID, serverID, cmdType, string(payload),
+	).Scan(&cmdID)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "internal", "Could not enqueue compose action.")
+		return
+	}
+
+	uid := u.ID
+	s.auth.Audit(r.Context(), &uid, "compose."+action, "compose_project", id.String(), "queued", r.RemoteAddr, map[string]any{
+		"project": projectName, "server": serverName, "command_id": cmdID,
+	})
+	_, _ = s.pool.Exec(r.Context(), `
+		INSERT INTO infrastructure_events (kind, severity, server_id, message, context)
+		VALUES ($1,'info',$2,$3,$4::jsonb)`,
+		"compose."+action, serverID,
+		"Queued compose "+action+" for project "+projectName,
+		string(mustJSON(map[string]any{"command_id": cmdID, "user": u.Email, "project": projectName})),
+	)
+
+	waitFor := 45 * time.Second
+	if action == "pull" || action == "up" {
+		waitFor = 90 * time.Second
+	}
+	status, result, errText, timedOut := s.waitCommand(r, cmdID, waitFor)
+	if timedOut {
+		httpx.JSON(w, http.StatusAccepted, map[string]any{
+			"accepted":   true,
+			"command_id": cmdID,
+			"status":     "pending",
+			"message":    "Compose action queued; agent has not completed yet.",
+		})
+		return
+	}
+	if status == "failed" || status == "expired" {
+		msg := "Compose action failed."
+		if errText != "" {
+			msg = errText
+		}
+		s.auth.Audit(r.Context(), &uid, "compose."+action, "compose_project", id.String(), "failed", r.RemoteAddr, map[string]any{
+			"error": msg, "command_id": cmdID,
+		})
+		httpx.ErrorDetails(w, http.StatusBadGateway, "action_failed", msg,
+			map[string]any{"command_id": cmdID}, nil)
+		return
+	}
+	if s.hub != nil {
+		s.hub.Broadcast("docker.updated", map[string]any{"server_id": serverID})
+	}
+	s.auth.Audit(r.Context(), &uid, "compose."+action, "compose_project", id.String(), "ok", r.RemoteAddr, map[string]any{
+		"command_id": cmdID,
+	})
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"ok": true, "action": action, "project": projectName, "command_id": cmdID, "result": result, "status": status,
 	})
 }
 

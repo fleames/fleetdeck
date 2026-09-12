@@ -76,6 +76,12 @@ func (s *Server) handleContainerLogs(w http.ResponseWriter, r *http.Request) {
 			tail = n
 		}
 	}
+	var since int64
+	if v := r.URL.Query().Get("since"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			since = n
+		}
+	}
 
 	var serverID, agentID uuid.UUID
 	var dockerContainerID, name string
@@ -93,6 +99,7 @@ func (s *Server) handleContainerLogs(w http.ResponseWriter, r *http.Request) {
 	payload, _ := json.Marshal(map[string]any{
 		"container_id": dockerContainerID,
 		"tail":         tail,
+		"since":        since,
 	})
 	var cmdID uuid.UUID
 	err = s.pool.QueryRow(r.Context(), `
@@ -125,6 +132,7 @@ func (s *Server) handleContainerLogs(w http.ResponseWriter, r *http.Request) {
 				"container_id": id,
 				"name":         name,
 				"tail":         tail,
+				"since":        since,
 				"lines":        splitLogLines(text),
 				"raw":          text,
 				"fetched_at":   time.Now().UTC(),

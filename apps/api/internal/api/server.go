@@ -125,6 +125,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/volumes", s.requireUser(s.handleListVolumes))
 			r.Get("/networks", s.requireUser(s.handleListNetworks))
 			r.Get("/compose", s.requireUser(s.handleListCompose))
+			r.Post("/compose/{id}/actions/{action}", s.requireRole("admin", "operator")(s.handleComposeAction))
 			r.Get("/settings", s.requireUser(s.handleGetSettings))
 			r.Patch("/settings", s.requireRole("admin")(s.handlePatchSettings))
 			r.Get("/secrets", s.requireRole("admin")(s.handleListSecrets))

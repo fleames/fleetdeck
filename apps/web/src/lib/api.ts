@@ -278,12 +278,30 @@ export const api = {
   compose: () =>
     request<{
       data: {
+        id: string;
+        server_id: string;
+        server_name: string;
         project_name: string;
         status: string;
-        server_name: string;
         containers: number;
+        updated_at: string;
       }[];
+      meta: { total: number };
     }>("/api/v1/compose"),
+  composeAction: (id: string, action: string) =>
+    request<{
+      ok?: boolean;
+      accepted?: boolean;
+      action?: string;
+      project?: string;
+      command_id?: string;
+      status?: string;
+      message?: string;
+      result?: string;
+    }>(`/api/v1/compose/${id}/actions/${action}`, {
+      method: "POST",
+      body: JSON.stringify({ confirm: true }),
+    }),
   alerts: () =>
     request<{ data: { id: string; severity: string; status: string; message: string }[] }>(
       "/api/v1/alerts",

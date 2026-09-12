@@ -19,7 +19,7 @@ import (
 	"github.com/fleetdeck/fleetdeck/apps/agent/internal/collect"
 )
 
-const agentVersion = "0.4.5-dev"
+const agentVersion = "0.4.6-dev"
 
 const (
 	inventoryInterval    = 60 * time.Second
@@ -267,14 +267,31 @@ func pollCommands(ctx context.Context, creds credentials) error {
 			var p struct {
 				ContainerID string `json:"container_id"`
 				Tail        int    `json:"tail"`
+				Since       int64  `json:"since"`
 			}
 			_ = json.Unmarshal(cmd.Payload, &p)
-			text, err := collect.FetchContainerLogs(ctx, p.ContainerID, p.Tail)
+			text, err := collect.FetchContainerLogs(ctx, p.ContainerID, p.Tail, p.Since)
 			if err != nil {
 				ok = false
 				errText = err.Error()
 			} else {
 				result = text
+			}
+		case "compose.up", "compose.down", "compose.start", "compose.stop", "compose.restart", "compose.pull":
+			var p struct {
+				ProjectName string `json:"project_name"`
+				Action      string `json:"action"`
+			}
+			_ = json.Unmarshal(cmd.Payload, &p)
+			action := p.Action
+			if action == "" {
+				action = strings.TrimPrefix(cmd.Type, "compose.")
+			}
+			if err := collect.ComposeAction(ctx, p.ProjectName, action); err != nil {
+				ok = false
+				errText = err.Error()
+			} else {
+				result = "ok"
 			}
 		case "container.start", "container.stop", "container.restart", "container.pause", "container.unpause", "container.remove":
 			var p struct {

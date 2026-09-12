@@ -3,7 +3,7 @@
 # Uploads to R2 automatically when R2_* credentials are set in .env (or the environment).
 # Use -NoUpload to skip; -Upload to force upload even if detection is unclear.
 param(
-  [string]$Version = "0.4.5-dev",
+  [string]$Version = "0.4.6-dev",
   [string]$Channel = "latest",
   [string]$ApiUrl = "",
   [string]$OutRoot = "",
