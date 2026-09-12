@@ -111,6 +111,10 @@ func (s *Server) Router() http.Handler {
 			r.Post("/alerts/{id}/acknowledge", s.requireRole("admin", "operator")(s.handleAckAlert))
 			r.Post("/alerts/{id}/resolve", s.requireRole("admin", "operator")(s.handleResolveAlert))
 			r.Post("/alerts/{id}/silence", s.requireRole("admin", "operator")(s.handleSilenceAlert))
+			r.Get("/uptime-probes", s.requireUser(s.handleListUptimeProbes))
+			r.Post("/uptime-probes", s.requireRole("admin", "operator")(s.handleCreateUptimeProbe))
+			r.Patch("/uptime-probes/{id}", s.requireRole("admin", "operator")(s.handleUpdateUptimeProbe))
+			r.Delete("/uptime-probes/{id}", s.requireRole("admin", "operator")(s.handleDeleteUptimeProbe))
 
 			r.Get("/events", s.requireUser(s.handleListEvents))
 			r.Get("/search", s.requireUser(s.handleSearch))
@@ -278,6 +282,9 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	}
 	if !ws.LastPartAt.IsZero() {
 		workerOut["last_partitions_at"] = ws.LastPartAt
+	}
+	if !ws.LastProbesAt.IsZero() {
+		workerOut["last_probes_at"] = ws.LastProbesAt
 	}
 
 	httpx.JSON(w, http.StatusOK, map[string]any{

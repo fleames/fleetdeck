@@ -111,6 +111,8 @@ Sensitive env vars in container detail: **masked by default**; `?reveal_env=1` r
 | POST | `/alerts/:id/resolve` |
 | POST | `/alerts/:id/silence` |
 | GET/POST/PATCH/DELETE | `/alert-rules` |
+| GET/POST | `/uptime-probes` | Control-plane HTTP/TCP checks (max 20); not via agents |
+| PATCH/DELETE | `/uptime-probes/:id` | |
 | GET | `/events` |
 | GET | `/search?q=` |
 

@@ -46,6 +46,9 @@ func (r *Runner) Start(ctx context.Context) {
 		r.evaluateAlerts(c)
 		markWorker("alerts")
 	})
+	go r.loop(ctx, probeTickInterval, func(c context.Context) {
+		r.runUptimeProbes(c)
+	})
 	go r.loop(ctx, time.Hour, r.retain)
 	go r.loop(ctx, 6*time.Hour, func(c context.Context) {
 		r.ensureMetricsPartitions(c)
@@ -108,7 +111,7 @@ func (r *Runner) ensureDefaultRules(ctx context.Context) {
 		{"RAM high", "warning", "mem_pct", ">", 90, 300},
 		{"Disk high", "critical", "disk_pct", ">", 95, 60},
 		{"Disk warning", "warning", "disk_pct", ">", 85, 300},
-		{"Server offline", "critical", "server_offline", "==", 1, 45},
+		{"Server offline", "critical", "server_offline", "==", 1, 150},
 		{"Container unhealthy", "critical", "unhealthy_containers", ">", 0, 60},
 	}
 	for _, d := range defaults {
@@ -283,11 +286,11 @@ func (r *Runner) evalHostThreshold(ctx context.Context, rule alertRule) bool {
 
 		ok, latest := SustainedBreach(times, values, rule.Operator, rule.Threshold, rule.Duration, now)
 		if !ok {
-			r.resolveAlert(ctx, rule.UUID, &serverID, rule.Name+" recovered on "+serverName)
+			r.resolveAlert(ctx, rule.UUID, &serverID, nil, rule.Name+" recovered on "+serverName)
 			continue
 		}
 		msg := rule.Name + " on " + serverName
-		if r.upsertActiveAlert(ctx, rule.UUID, rule.Severity, &serverID, nil, msg, map[string]any{
+		if r.upsertActiveAlert(ctx, rule.UUID, rule.Severity, &serverID, nil, nil, msg, map[string]any{
 			"metric": rule.Metric, "value": latest, "threshold": rule.Threshold, "server": serverName,
 			"duration_seconds": rule.Duration,
 		}, rule.Cooldown) {
@@ -336,7 +339,7 @@ func (r *Runner) evalOffline(ctx context.Context, rule alertRule) bool {
 		if !ServerInScope(rule.ScopeType, rule.ScopeIDs, id) {
 			continue
 		}
-		if r.upsertActiveAlert(ctx, rule.UUID, rule.Severity, &id, nil, rule.Name+": "+n, map[string]any{"server": n}, rule.Cooldown) {
+		if r.upsertActiveAlert(ctx, rule.UUID, rule.Severity, &id, nil, nil, rule.Name+": "+n, map[string]any{"server": n}, rule.Cooldown) {
 			changed = true
 		}
 	}
@@ -375,11 +378,11 @@ func (r *Runner) evalUnhealthyContainers(ctx context.Context, rule alertRule) bo
 			continue
 		}
 		if compare(rule.Operator, count, rule.Threshold) {
-			if r.upsertActiveAlert(ctx, rule.UUID, rule.Severity, &id, nil, rule.Name+" on "+n, map[string]any{"count": count, "server": n}, rule.Cooldown) {
+			if r.upsertActiveAlert(ctx, rule.UUID, rule.Severity, &id, nil, nil, rule.Name+" on "+n, map[string]any{"count": count, "server": n}, rule.Cooldown) {
 				changed = true
 			}
 		} else {
-			r.resolveAlert(ctx, rule.UUID, &id, rule.Name+" recovered on "+n)
+			r.resolveAlert(ctx, rule.UUID, &id, nil, rule.Name+" recovered on "+n)
 		}
 	}
 	return changed
@@ -392,14 +395,15 @@ func CooldownActive(resolvedAt *time.Time, cooldownSec int, now time.Time) bool 
 	return now.Sub(*resolvedAt) < time.Duration(cooldownSec)*time.Second
 }
 
-func (r *Runner) upsertActiveAlert(ctx context.Context, ruleID uuid.UUID, severity string, serverID, containerID *uuid.UUID, message string, contextMap map[string]any, cooldownSec int) bool {
+func (r *Runner) upsertActiveAlert(ctx context.Context, ruleID uuid.UUID, severity string, serverID, containerID, probeID *uuid.UUID, message string, contextMap map[string]any, cooldownSec int) bool {
 	var existing uuid.UUID
 	err := r.pool.QueryRow(ctx, `
 		SELECT id FROM alert_instances
 		WHERE rule_id=$1 AND status IN ('active','acknowledged')
 		  AND server_id IS NOT DISTINCT FROM $2
 		  AND container_id IS NOT DISTINCT FROM $3
-		LIMIT 1`, ruleID, serverID, containerID).Scan(&existing)
+		  AND probe_id IS NOT DISTINCT FROM $4
+		LIMIT 1`, ruleID, serverID, containerID, probeID).Scan(&existing)
 	if err == nil {
 		_, _ = r.pool.Exec(ctx, `
 			UPDATE alert_instances SET last_seen_at=now(), message=$2, context=COALESCE($3::jsonb, '{}'::jsonb)
@@ -414,18 +418,19 @@ func (r *Runner) upsertActiveAlert(ctx context.Context, ruleID uuid.UUID, severi
 			WHERE rule_id=$1 AND status='resolved'
 			  AND server_id IS NOT DISTINCT FROM $2
 			  AND container_id IS NOT DISTINCT FROM $3
+			  AND probe_id IS NOT DISTINCT FROM $4
 			  AND resolved_at IS NOT NULL
 			ORDER BY resolved_at DESC
-			LIMIT 1`, ruleID, serverID, containerID).Scan(&resolvedAt)
+			LIMIT 1`, ruleID, serverID, containerID, probeID).Scan(&resolvedAt)
 		if CooldownActive(resolvedAt, cooldownSec, time.Now().UTC()) {
 			return false
 		}
 	}
 
 	_, err = r.pool.Exec(ctx, `
-		INSERT INTO alert_instances (rule_id, severity, status, server_id, container_id, message, context)
-		VALUES ($1,$2,'active',$3,$4,$5,COALESCE($6::jsonb,'{}'::jsonb))`,
-		ruleID, severity, serverID, containerID, message, mustJSON(contextMap))
+		INSERT INTO alert_instances (rule_id, severity, status, server_id, container_id, probe_id, message, context)
+		VALUES ($1,$2,'active',$3,$4,$5,$6,COALESCE($7::jsonb,'{}'::jsonb))`,
+		ruleID, severity, serverID, containerID, probeID, message, mustJSON(contextMap))
 	if err != nil {
 		return false
 	}
@@ -437,12 +442,13 @@ func (r *Runner) upsertActiveAlert(ctx context.Context, ruleID uuid.UUID, severi
 	return true
 }
 
-func (r *Runner) resolveAlert(ctx context.Context, ruleID uuid.UUID, serverID *uuid.UUID, message string) {
+func (r *Runner) resolveAlert(ctx context.Context, ruleID uuid.UUID, serverID, probeID *uuid.UUID, message string) {
 	tag, err := r.pool.Exec(ctx, `
 		UPDATE alert_instances
 		SET status='resolved', resolved_at=now(), last_seen_at=now()
 		WHERE rule_id=$1 AND status IN ('active','acknowledged')
-		  AND server_id IS NOT DISTINCT FROM $2`, ruleID, serverID)
+		  AND server_id IS NOT DISTINCT FROM $2
+		  AND probe_id IS NOT DISTINCT FROM $3`, ruleID, serverID, probeID)
 	if err == nil && tag.RowsAffected() > 0 {
 		_, _ = r.pool.Exec(ctx, `
 			INSERT INTO infrastructure_events (kind, severity, server_id, message)

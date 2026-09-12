@@ -27,12 +27,13 @@ func TestPollCommandsRequestsLongPoll(t *testing.T) {
 
 func TestDefaultRecurringRequestBudget(t *testing.T) {
 	const day = 24 * 60 * 60
-	metrics := day / 10
+	metrics := day / 20
 	heartbeats := day / int(heartbeatInterval.Seconds())
 	inventories := day / int(inventoryInterval.Seconds())
 	commandPolls := day / int(commandLongPollWait.Seconds())
 	total := metrics + heartbeats + inventories + commandPolls
-	if total != 16416 {
-		t.Fatalf("requests/day=%d want 16416", total)
+	// ~9.4k/agent/day at defaults (metrics 20s, heartbeat 60s, inventory 120s, long-poll 30s).
+	if total != 9360 {
+		t.Fatalf("requests/day=%d want 9360", total)
 	}
 }

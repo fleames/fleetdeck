@@ -176,6 +176,9 @@ func (s *Server) handleSelfMetrics(w http.ResponseWriter, r *http.Request) {
 	if !ws.LastPartAt.IsZero() {
 		workerOut["last_partitions_at"] = ws.LastPartAt
 	}
+	if !ws.LastProbesAt.IsZero() {
+		workerOut["last_probes_at"] = ws.LastProbesAt
+	}
 
 	started := time.Now().UTC()
 	httpx.JSON(w, http.StatusOK, map[string]any{

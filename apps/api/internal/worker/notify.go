@@ -25,6 +25,7 @@ type Status struct {
 	LastAlertsAt  time.Time `json:"last_alerts_at,omitempty"`
 	LastOfflineAt time.Time `json:"last_offline_at,omitempty"`
 	LastPartAt    time.Time `json:"last_partitions_at,omitempty"`
+	LastProbesAt  time.Time `json:"last_probes_at,omitempty"`
 }
 
 var globalStatus Status
@@ -38,6 +39,7 @@ func Snapshot() Status {
 		LastAlertsAt:  globalStatus.LastAlertsAt,
 		LastOfflineAt: globalStatus.LastOfflineAt,
 		LastPartAt:    globalStatus.LastPartAt,
+		LastProbesAt:  globalStatus.LastProbesAt,
 	}
 }
 
@@ -54,6 +56,8 @@ func markWorker(kind string) {
 		globalStatus.LastOfflineAt = now
 	case "partitions":
 		globalStatus.LastPartAt = now
+	case "probes":
+		globalStatus.LastProbesAt = now
 	}
 }
 

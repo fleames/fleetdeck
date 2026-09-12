@@ -19,12 +19,12 @@ import (
 	"github.com/fleetdeck/fleetdeck/apps/agent/internal/collect"
 )
 
-const agentVersion = "0.4.6-dev"
+const agentVersion = "0.4.7-dev"
 
 const (
-	inventoryInterval    = 60 * time.Second
-	heartbeatInterval    = 30 * time.Second
-	commandLongPollWait  = 25 * time.Second
+	inventoryInterval    = 120 * time.Second
+	heartbeatInterval    = 60 * time.Second
+	commandLongPollWait  = 30 * time.Second
 	commandRetryInterval = 2 * time.Second
 )
 
@@ -48,7 +48,7 @@ func main() {
 	apiURL := flag.String("api", getenv("FLEETDECK_URL", "http://localhost:8080"), "FleetDeck API base URL")
 	token := flag.String("token", os.Getenv("FLEETDECK_ENROLLMENT_TOKEN"), "Enrollment token")
 	stateDir := flag.String("state-dir", getenv("FLEETDECK_STATE_DIR", defaultStateDir()), "Credential state directory")
-	interval := flag.Duration("interval", 10*time.Second, "Metrics collection interval")
+	interval := flag.Duration("interval", 20*time.Second, "Metrics collection interval")
 	enrollOnly := flag.Bool("enroll", false, "Enroll then exit")
 	doUninstall := flag.Bool("uninstall", false, "Uninstall agent from this host (root/systemd; Linux)")
 	doUpdate := flag.Bool("update", false, "Apply staged agent update (root/systemd; Linux)")

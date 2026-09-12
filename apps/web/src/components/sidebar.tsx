@@ -24,6 +24,7 @@ const nav = [
     items: [
       { href: "/metrics", label: "Metrics" },
       { href: "/alerts", label: "Alerts" },
+      { href: "/probes", label: "Probes" },
       { href: "/events", label: "Events" },
       { href: "/logs", label: "Logs" },
     ],

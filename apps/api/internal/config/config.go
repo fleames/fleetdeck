@@ -50,7 +50,7 @@ func Load() (Config, error) {
 		RawRetentionDays:   getenvInt("METRICS_RAW_RETENTION_DAYS", 7),
 		Agg5mRetentionDays: getenvInt("METRICS_5M_RETENTION_DAYS", 30),
 		Agg1hRetentionDays: getenvInt("METRICS_1H_RETENTION_DAYS", 365),
-		AgentOfflineAfter:  time.Duration(getenvInt("AGENT_OFFLINE_AFTER_SECONDS", 45)) * time.Second,
+		AgentOfflineAfter:  time.Duration(getenvInt("AGENT_OFFLINE_AFTER_SECONDS", 150)) * time.Second,
 		CookieSecure:       getenv("COOKIE_SECURE", "false") == "true",
 		AgentDistDir:       getenv("AGENT_DIST_DIR", "/app/agent-dist"),
 		AgentCDNBase:       strings.TrimRight(getenv("AGENT_CDN_BASE", "https://cdn.example.com/fleetdeck"), "/"),
