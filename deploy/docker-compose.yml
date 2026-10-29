@@ -88,7 +88,8 @@ services:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8080}
     ports:
-      - "3000:3000"
+      # Host 13000 — Windows Hyper-V often reserves 2970–3069 (blocks 3000 bind).
+      - "13000:3000"
     depends_on:
       - api
 
