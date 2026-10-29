@@ -43,10 +43,11 @@ services:
       RMM_ADVERTISE_HOST: ${RMM_ADVERTISE_HOST:-api}
       RMM_NATIVE_LISTEN: ${RMM_NATIVE_LISTEN:-:3390}
       RMM_NATIVE_PUBLIC_HOST: ${RMM_NATIVE_PUBLIC_HOST:-127.0.0.1}
-      RMM_NATIVE_PUBLIC_PORT: ${RMM_NATIVE_PUBLIC_PORT:-3390}
+      # Host publish uses 13390 — Windows Hyper-V often reserves 3370–3469 (blocks 3390 bind).
+      RMM_NATIVE_PUBLIC_PORT: ${RMM_NATIVE_PUBLIC_PORT:-13390}
     ports:
       - "8080:8080"
-      - "3390:3390"
+      - "13390:3390"
     depends_on:
       db:
         condition: service_healthy
