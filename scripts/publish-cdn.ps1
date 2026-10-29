@@ -4,6 +4,7 @@
 # Use -NoUpload to skip; -Upload to force upload even if detection is unclear.
 param(
   [string]$Version = "0.4.7-dev",
+  [string]$RmmVersion = "0.1.4-dev",
   [string]$Channel = "latest",
   [string]$ApiUrl = "",
   [string]$OutRoot = "",
@@ -72,10 +73,31 @@ Copy-Item (Join-Path $ReleaseDir "fleetdeck-agent_${Version}_linux_arm64") (Join
 Copy-Item (Join-Path $ReleaseDir "fleetdeck-agent_${Version}_linux_amd64") (Join-Path $VersionDir "linux-amd64") -Force
 Copy-Item (Join-Path $ReleaseDir "fleetdeck-agent_${Version}_linux_arm64") (Join-Path $VersionDir "linux-arm64") -Force
 
+$RmmReleaseDir = Join-Path $Root "dist\rmm-agent\$RmmVersion"
+$RmmExe = Join-Path $RmmReleaseDir "fleetdeck-rmm_${RmmVersion}_windows_amd64.exe"
+if (-not (Test-Path $RmmExe)) {
+  Write-Host "Building RMM agent $RmmVersion..."
+  & (Join-Path $Root "scripts\release-rmm.ps1") -Version $RmmVersion -NoCdn
+}
+if (Test-Path $RmmExe) {
+  foreach ($dir in @($ChannelDir, $VersionDir)) {
+    Copy-Item $RmmExe (Join-Path $dir "windows-amd64") -Force
+    # .exe name helps filters / AV that reject extensionless downloads.
+    Copy-Item $RmmExe (Join-Path $dir "fleetdeck-rmm.exe") -Force
+  }
+} else {
+  Write-Warning "RMM windows-amd64 artifact missing; CDN bundle will omit it."
+}
+
 $InstallSrc = Join-Path $Root "cdn\fleetdeck\install.sh"
 Write-CdnScript $InstallSrc (Join-Path $OutRoot "install.sh") $CdnBase $ApiUrl
 Write-CdnScript $InstallSrc (Join-Path $ChannelDir "install.sh") $CdnBase $ApiUrl
 Write-CdnScript $InstallSrc (Join-Path $VersionDir "install.sh") $CdnBase $ApiUrl
+
+$InstallRmmSrc = Join-Path $Root "cdn\fleetdeck\install-rmm.ps1"
+Write-CdnScript $InstallRmmSrc (Join-Path $OutRoot "install-rmm.ps1") $CdnBase $ApiUrl
+Write-CdnScript $InstallRmmSrc (Join-Path $ChannelDir "install-rmm.ps1") $CdnBase $ApiUrl
+Write-CdnScript $InstallRmmSrc (Join-Path $VersionDir "install-rmm.ps1") $CdnBase $ApiUrl
 
 $InstallUserSrc = Join-Path $Root "cdn\fleetdeck\install-user.sh"
 Write-CdnScript $InstallUserSrc (Join-Path $OutRoot "install-user.sh") $CdnBase $ApiUrl
@@ -93,7 +115,7 @@ $configJson = "{`"api_url`":`"$ApiUrl`"}"
 [System.IO.File]::WriteAllText((Join-Path $VersionDir "config.json"), $configJson)
 
 function Write-Sums([string]$Dir) {
-  Get-ChildItem $Dir -File | Where-Object { $_.Name -like "linux-*" } | ForEach-Object {
+  Get-ChildItem $Dir -File | Where-Object { $_.Name -like "linux-*" -or $_.Name -eq "windows-amd64" -or $_.Name -eq "fleetdeck-rmm.exe" } | ForEach-Object {
     $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
     "$h  $($_.Name)"
   } | Set-Content -Encoding ascii (Join-Path $Dir "SHA256SUMS")
@@ -108,10 +130,12 @@ Upload the contents of this folder to your object storage so these URLs work:
 
 - $CdnBase/install.sh
 - $CdnBase/install-user.sh
+- $CdnBase/install-rmm.ps1
 - $CdnBase/upgrade.sh
 - $CdnBase/config.json
 - $CdnBase/latest/linux-amd64
 - $CdnBase/latest/linux-arm64
+- $CdnBase/latest/windows-amd64
 - $CdnBase/latest/SHA256SUMS
 
 With R2_* set in .env, publish-cdn.ps1 uploads automatically.
@@ -123,6 +147,11 @@ config.json api_url = $ApiUrl
 Remote install (control plane must be online with Tunnel/proxy):
 
 curl -fsSL $CdnBase/install.sh | sudo bash -s -- --token 'TOKEN'
+
+Windows RMM agent:
+
+irm $CdnBase/install-rmm.ps1 | iex
+# set FLEETDECK_RMM_ENROLLMENT_TOKEN / FLEETDECK_URL first, or pass -Token / -ApiUrl
 
 Shared host / no sudo (user install under ~/.local/bin + ~/.fleetdeck):
 

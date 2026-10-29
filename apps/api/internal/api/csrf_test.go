@@ -13,8 +13,14 @@ func TestCSRFExempt(t *testing.T) {
 	if !csrfExempt("/agent/v1/metrics") {
 		t.Fatal("agent routes should be exempt")
 	}
+	if !csrfExempt("/rmm/v1/heartbeat") {
+		t.Fatal("rmm agent routes should be exempt")
+	}
 	if !csrfExempt("/install.sh") {
 		t.Fatal("install.sh should be exempt")
+	}
+	if !csrfExempt("/install-rmm.ps1") {
+		t.Fatal("install-rmm.ps1 should be exempt")
 	}
 	if csrfExempt("/api/v1/servers") {
 		t.Fatal("servers should not be exempt")

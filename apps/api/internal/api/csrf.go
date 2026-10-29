@@ -62,10 +62,10 @@ func (s *Server) handleCSRF(w http.ResponseWriter, r *http.Request) {
 func csrfExempt(path string) bool {
 	switch path {
 	case "/api/v1/auth/login", "/api/v1/auth/bootstrap", "/api/v1/auth/status", "/api/v1/auth/csrf",
-		"/install.sh", "/healthz":
+		"/install.sh", "/install-rmm.ps1", "/healthz":
 		return true
 	default:
-		return strings.HasPrefix(path, "/agent/v1/") || strings.HasPrefix(path, "/install/")
+		return strings.HasPrefix(path, "/agent/v1/") || strings.HasPrefix(path, "/rmm/v1/") || strings.HasPrefix(path, "/install/")
 	}
 }
 

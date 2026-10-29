@@ -165,13 +165,15 @@ function Invoke-R2PutObject([string]$Key, [string]$FilePath, [string]$ContentTyp
   $payloadBytes = [System.IO.File]::ReadAllBytes($FilePath)
   $sha256 = [System.Security.Cryptography.SHA256]::Create()
   $payloadHash = ($sha256.ComputeHash($payloadBytes) | ForEach-Object { $_.ToString("x2") }) -join ""
+  # Short TTL so agent binary overwrites propagate on the R2 custom domain without a purge.
+  $cacheControl = "public, max-age=60, must-revalidate"
 
   $hostHeader = "$AccountId.r2.cloudflarestorage.com"
   $encodedKey = ($Key -split "/" | ForEach-Object { [Uri]::EscapeDataString($_) }) -join "/"
   $canonicalUri = "/$Bucket/$encodedKey"
   $canonicalQuerystring = ""
-  $canonicalHeaders = "content-type:$ContentType`nhost:$hostHeader`nx-amz-content-sha256:$payloadHash`nx-amz-date:$amzDate`n"
-  $signedHeaders = "content-type;host;x-amz-content-sha256;x-amz-date"
+  $canonicalHeaders = "cache-control:$cacheControl`ncontent-type:$ContentType`nhost:$hostHeader`nx-amz-content-sha256:$payloadHash`nx-amz-date:$amzDate`n"
+  $signedHeaders = "cache-control;content-type;host;x-amz-content-sha256;x-amz-date"
   $canonicalRequest = "PUT`n$canonicalUri`n$canonicalQuerystring`n$canonicalHeaders`n$signedHeaders`n$payloadHash"
 
   $algorithm = "AWS4-HMAC-SHA256"
@@ -192,6 +194,7 @@ function Invoke-R2PutObject([string]$Key, [string]$FilePath, [string]$ContentTyp
   $req.Method = "PUT"
   $req.ContentType = $ContentType
   $req.ContentLength = $payloadBytes.Length
+  $req.Headers.Add("Cache-Control", $cacheControl)
   $req.Headers.Add("x-amz-content-sha256", $payloadHash)
   $req.Headers.Add("x-amz-date", $amzDate)
   $req.Headers.Add("Authorization", $authorization)

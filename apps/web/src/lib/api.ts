@@ -208,6 +208,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ confirm: true, channel: opts?.channel }),
     }),
+  updateRmmAgent: (id: string, opts?: { channel?: string }) =>
+    request<{
+      ok: boolean;
+      id: string;
+      name: string;
+      result?: string;
+      channel?: string;
+      previous_version?: string;
+      message?: string;
+    }>(`/api/v1/rmm/hosts/${id}/update-agent`, {
+      method: "POST",
+      body: JSON.stringify({ confirm: true, channel: opts?.channel }),
+    }),
   dockerSummary: () =>
     request<{
       servers: number;
