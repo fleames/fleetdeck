@@ -9,6 +9,7 @@ const nav = [
     items: [
       { href: "/", label: "Dashboard" },
       { href: "/servers", label: "Servers" },
+      { href: "/rmm", label: "Remote" },
       { href: "/compare", label: "Compare" },
       { href: "/topology", label: "Topology" },
       { href: "/docker", label: "Docker" },

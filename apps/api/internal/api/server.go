@@ -13,6 +13,7 @@ import (
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/config"
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/httpx"
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/realtime"
+	"github.com/fleetdeck/fleetdeck/apps/api/internal/rmm"
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/secrets"
 	"github.com/fleetdeck/fleetdeck/apps/api/internal/worker"
 	"github.com/go-chi/chi/v5"
@@ -30,6 +31,7 @@ type Server struct {
 	pool      *pgxpool.Pool
 	auth      *auth.Service
 	hub       *realtime.Hub
+	rmmHub    *rmm.Hub
 	secrets   *secrets.Store
 	ingestSem chan struct{}
 }
@@ -40,9 +42,11 @@ func New(cfg config.Config, pool *pgxpool.Pool, hub *realtime.Hub) *Server {
 		pool:      pool,
 		auth:      auth.NewService(pool, cfg.CookieSecure),
 		hub:       hub,
+		rmmHub:    rmm.NewHub(),
 		ingestSem: make(chan struct{}, maxConcurrentIngest),
 	}
 	initRateLimiters(pool)
+	rmmSessionLimiter = newDBRateLimiter(pool, "rmm_session", 20, time.Minute)
 	store, err := secrets.NewStore(pool, cfg.SessionSecret)
 	if err != nil {
 		log.Printf("secrets store: %v (envelope Put/Get unavailable)", err)
@@ -50,6 +54,54 @@ func New(cfg config.Config, pool *pgxpool.Pool, hub *realtime.Hub) *Server {
 		s.secrets = store
 	}
 	return s
+}
+
+// StartRMMNativeGateway starts the optional native RDP TCP gateway (AUTH token preamble).
+func (s *Server) StartRMMNativeGateway(ctx context.Context) {
+	gw := &rmm.NativeGateway{
+		Addr: s.cfg.RMMNativeListen,
+		Lookup: func(ctx context.Context, token string) (uuid.UUID, string, bool) {
+			var sessionID uuid.UUID
+			var hash string
+			var expires *time.Time
+			err := s.pool.QueryRow(ctx, `
+				SELECT id, native_token_hash, native_token_expires_at
+				FROM rmm_sessions
+				WHERE mode='native' AND status IN ('pending','connecting','active')
+				  AND native_token_hash=$1`, auth.HashToken(token),
+			).Scan(&sessionID, &hash, &expires)
+			if err != nil {
+				return uuid.Nil, "", false
+			}
+			if expires != nil && time.Now().UTC().After(*expires) {
+				// Allow reuse after first connect window only if session already active.
+				var status string
+				_ = s.pool.QueryRow(ctx, `SELECT status FROM rmm_sessions WHERE id=$1`, sessionID).Scan(&status)
+				if status != "active" {
+					return uuid.Nil, "", false
+				}
+			}
+			st := s.rmmHub.Get(sessionID)
+			if st == nil || st.ListenAddr == "" {
+				return uuid.Nil, "", false
+			}
+			// One-time native token: clear hash after successful AUTH so stolen tokens cannot reconnect.
+			_, _ = s.pool.Exec(ctx, `
+				UPDATE rmm_sessions
+				SET native_token_hash=NULL, native_token_expires_at=now(), updated_at=now()
+				WHERE id=$1`, sessionID)
+			return sessionID, st.ListenAddr, true
+		},
+		OnConnect: func(sessionID uuid.UUID) {
+			_, _ = s.pool.Exec(context.Background(), `
+				INSERT INTO rmm_session_events (session_id, kind, message)
+				VALUES ($1, 'native.connected', 'Native RDP client authenticated.')`, sessionID)
+			s.hub.Broadcast("rmm.session.updated", map[string]any{"session_id": sessionID, "viewer": "native"})
+		},
+	}
+	if err := gw.Start(ctx); err != nil {
+		log.Printf("rmm native gateway: %v", err)
+	}
 }
 
 // Secrets returns the envelope store (may be nil if key derivation failed).
@@ -74,10 +126,14 @@ func (s *Server) Router() http.Handler {
 
 	r.Get("/healthz", s.handleHealthz)
 	r.Get("/install.sh", s.handleInstallScript)
+	r.Get("/install-rmm.ps1", s.handleInstallRMMScript)
 	r.Get("/install/agent/linux/{arch}", s.handleInstallAgentBinary)
+	r.Get("/install/rmm/windows/amd64", s.handleInstallRMMBinary)
 
 	// WebSocket without request timeout middleware
 	r.Get("/api/v1/realtime", s.handleRealtime)
+	r.Get("/api/v1/rmm/sessions/{sessionID}/guac", s.handleRMMGuacTunnel)
+	r.Get("/rmm/v1/tunnel", s.requireRMMAgent(s.handleRMMAgentTunnel))
 
 	r.Group(func(r chi.Router) {
 		r.Use(chimw.Timeout(60 * time.Second))
@@ -105,6 +161,19 @@ func (s *Server) Router() http.Handler {
 			r.Post("/agents/install-oneline", s.requireRole("admin", "operator")(s.handleInstallOneline))
 			r.Post("/agents/install-bundle", s.requireRole("admin", "operator")(s.handleInstallBundle))
 			r.Post("/agents/install-command", s.requireRole("admin", "operator")(s.handleInstallCommand))
+
+			r.Get("/rmm/hosts", s.requireUser(s.handleListRMMHosts))
+			r.Get("/rmm/hosts/{id}", s.requireUser(s.handleGetRMMHost))
+			r.Post("/rmm/hosts/{id}/remove", s.requireRole("admin", "operator")(s.handleDeleteRMMHost))
+			r.Post("/rmm/hosts/{id}/update-agent", s.requireRole("admin", "operator")(s.handleUpdateRMMAgent))
+			r.Post("/rmm/hosts/{id}/sessions", s.requireRole("admin", "operator")(s.handleCreateRMMBrowserSession))
+			r.Post("/rmm/hosts/{id}/native-session", s.requireRole("admin", "operator")(s.handleCreateRMMNativeSession))
+			r.Post("/rmm/enrollment-tokens", s.requireRole("admin", "operator")(s.handleCreateRMMEnrollmentToken))
+			r.Post("/rmm/install-command", s.requireRole("admin", "operator")(s.handleRMMInstallCommand))
+			r.Get("/rmm/sessions/{sessionID}", s.requireRole("admin", "operator")(s.handleGetRMMSession))
+			r.Post("/rmm/sessions/{sessionID}/disconnect", s.requireRole("admin", "operator")(s.handleDisconnectRMMSession))
+			r.Get("/rmm/sessions/{sessionID}/connection", s.requireRole("admin", "operator")(s.handleRMMSessionConnectionInfo))
+			r.Post("/rmm/sessions/{sessionID}/rdp-credentials", s.requireRole("admin", "operator")(s.handleSetRMMSessionRDPCredentials))
 
 			r.Get("/alerts", s.requireUser(s.handleListAlerts))
 			r.Get("/alert-rules", s.requireUser(s.handleListAlertRules))
@@ -157,6 +226,13 @@ func (s *Server) Router() http.Handler {
 			r.With(maxBody(16<<20)).Post("/inventory", s.requireAgent(s.handleAgentInventory))
 			r.Get("/commands", s.requireAgent(s.handleAgentPollCommands))
 			r.With(maxBody(4<<20)).Post("/commands/{id}/result", s.requireAgent(s.handleAgentCommandResult))
+		})
+
+		r.Route("/rmm/v1", func(r chi.Router) {
+			r.With(maxBody(256 << 10)).Post("/enroll", s.handleRMMEnroll)
+			r.With(maxBody(1<<20)).Post("/heartbeat", s.requireRMMAgent(s.handleRMMHeartbeat))
+			r.Get("/commands", s.requireRMMAgent(s.handleRMMPollCommands))
+			r.With(maxBody(1<<20)).Post("/commands/{id}/result", s.requireRMMAgent(s.handleRMMCommandResult))
 		})
 	})
 

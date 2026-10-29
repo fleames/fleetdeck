@@ -40,6 +40,7 @@ func New(pool *pgxpool.Pool, hub *realtime.Hub, offlineAfter time.Duration, rawD
 func (r *Runner) Start(ctx context.Context) {
 	go r.loop(ctx, 15*time.Second, func(c context.Context) {
 		r.markOffline(c)
+		r.expireRMMSessions(c)
 		markWorker("offline")
 	})
 	go r.loop(ctx, 20*time.Second, func(c context.Context) {
@@ -88,12 +89,37 @@ func (r *Runner) markOffline(ctx context.Context) {
 		SET status='offline', updated_at=now()
 		WHERE status='online'
 		  AND (last_heartbeat_at IS NULL OR last_heartbeat_at < $1)`, cutoff)
+	tagRMM, err := r.pool.Exec(ctx, `
+		UPDATE rmm_hosts
+		SET status='offline', updated_at=now()
+		WHERE status='online'
+		  AND (last_heartbeat_at IS NULL OR last_heartbeat_at < $1)`, cutoff)
+	if err != nil {
+		log.Printf("worker offline rmm hosts: %v", err)
+	} else if tagRMM.RowsAffected() > 0 {
+		r.hub.Broadcast("rmm.hosts.updated", map[string]any{"reason": "offline_detection"})
+	}
 	if tag.RowsAffected() > 0 {
 		r.hub.Broadcast("servers.updated", map[string]any{"reason": "offline_detection"})
 		_, _ = r.pool.Exec(ctx, `
 			INSERT INTO infrastructure_events (kind, severity, message, context)
 			VALUES ('servers.offline_detected', 'warning', 'One or more servers marked offline due to missed heartbeats.', jsonb_build_object('count', $1::int))`,
 			tag.RowsAffected())
+	}
+}
+
+func (r *Runner) expireRMMSessions(ctx context.Context) {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE rmm_sessions
+		SET status='closed', ended_at=now(), updated_at=now(), error='expired'
+		WHERE status IN ('pending','connecting','active')
+		  AND expires_at < now()`)
+	if err != nil {
+		log.Printf("worker expire rmm sessions: %v", err)
+		return
+	}
+	if tag.RowsAffected() > 0 {
+		r.hub.Broadcast("rmm.session.updated", map[string]any{"reason": "expired"})
 	}
 }
 
