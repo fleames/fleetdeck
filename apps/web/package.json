@@ -15,7 +15,7 @@
     "echarts": "^6.1.0",
     "echarts-for-react": "^3.0.6",
     "guacamole-common-js": "^1.5.0",
-    "next": "16.3.4",
+    "next": "16.4.5",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
@@ -27,9 +27,14 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.4",
+    "eslint-config-next": "16.4.5",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
-  "packageManager": "pnpm@10.30.3"
+  "packageManager": "pnpm@10.30.3",
+  "pnpm": {
+    "overrides": {
+      "source-map-js": ">=1.2.2"
+    }
+  }
 }
