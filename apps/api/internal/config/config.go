@@ -45,7 +45,7 @@ func Load() (Config, error) {
 	_ = godotenv.Load("../.env")
 	_ = godotenv.Load("../../.env")
 
-	webOrigins := parseOrigins(getenv("WEB_ORIGIN", "http://localhost:3000,http://127.0.0.1:3000"))
+	webOrigins := parseOrigins(getenv("WEB_ORIGIN", "http://localhost:13000,http://127.0.0.1:13000,http://localhost:3000,http://127.0.0.1:3000"))
 	cfg := Config{
 		APIAddr:            getenv("API_ADDR", ":8080"),
 		APIPublicURL:       getenv("API_PUBLIC_URL", "http://localhost:8080"),

@@ -12,7 +12,7 @@ Lightweight Go agents dial out with real metrics and Docker inventory. No inboun
 | | |
 |---|---|
 | **Status** | `0.4.3-dev` — core stack shipped; see [DEFINITION_OF_DONE.md](docs/DEFINITION_OF_DONE.md) |
-| **Dashboard** | http://localhost:3000 |
+| **Dashboard** | http://localhost:13000 (Compose host port; container listens on 3000) |
 | **API** | http://localhost:8080/healthz |
 | **Docs** | [docs/README.md](docs/README.md) |
 
@@ -136,11 +136,11 @@ docker compose -f deploy/docker-compose.yml up -d --build
 
 | Service | Port | Notes |
 |---------|------|-------|
-| `web` | **3000** | Dashboard |
+| `web` | **13000→3000** | Dashboard (host 13000 — Windows Hyper-V often blocks binding 3000) |
 | `api` | **8080** | Monitoring API + agent ingest |
 | `db` | **5433→5432** | PostgreSQL 16 (host 5433 avoids local Postgres clashes) |
 
-Open **http://localhost:3000** and create the first admin account (bootstrap). There is **no default password** in images.
+Open **http://localhost:13000** and create the first admin account (bootstrap). There is **no default password** in images.
 
 Windows helper (optional):
 

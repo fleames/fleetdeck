@@ -79,6 +79,13 @@ try {
   & docker compose @composeArgs
   if ($LASTEXITCODE -ne 0) { throw "docker compose failed ($LASTEXITCODE)" }
 
+  Write-Host ""
+  Write-Host "FleetDeck is up:"
+  Write-Host "  Dashboard  http://localhost:13000"
+  Write-Host "  API health http://localhost:8080/healthz"
+  Write-Host "  (Web is published on host :13000 because Windows often cannot bind :3000.)"
+  Write-Host ""
+
   if ($token) {
     $api = Get-EnvValue $EnvFile "API_PUBLIC_URL"
     if (-not $api) { $api = "https://agents.example.com" }

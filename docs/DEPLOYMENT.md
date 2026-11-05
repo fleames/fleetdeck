@@ -98,4 +98,4 @@ Start-ScheduledTask -TaskName 'FleetDeck-Autostart'
 docker compose --env-file .env -f deploy/docker-compose.yml ps
 ```
 
-After a reboot: sign in, wait for Docker Desktop, then check dashboard http://localhost:3000 and (if tunneled) `$API_PUBLIC_URL/healthz`.
+After a reboot: sign in, wait for Docker Desktop, then check dashboard http://localhost:13000 and (if tunneled) `$API_PUBLIC_URL/healthz`.

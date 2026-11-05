@@ -104,8 +104,9 @@ jobs:
           exit 1
       - name: Wait for web
         run: |
+          # Compose publishes web on host :13000 (container listens on 3000).
           for i in $(seq 1 60); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/ || true)
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:13000/ || true)
             if [ "$code" = "200" ]; then
               echo "web ready"
               exit 0
@@ -131,7 +132,7 @@ jobs:
       - name: Browser smoke (bootstrap → overview)
         working-directory: apps/web
         env:
-          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_BASE_URL: http://127.0.0.1:13000
           E2E_EMAIL: e2e@fleetdeck.local
           E2E_PASSWORD: e2e-test-password-12
         run: pnpm test:e2e

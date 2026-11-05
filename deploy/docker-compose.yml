@@ -27,7 +27,7 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-fleetdeck}:${POSTGRES_PASSWORD:-fleetdeck_dev_change_me}@db:5432/${POSTGRES_DB:-fleetdeck}?sslmode=disable
       API_ADDR: ":8080"
-      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:13000,http://127.0.0.1:13000,http://localhost:3000,http://127.0.0.1:3000}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:8080}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       AGENT_CDN_BASE: ${AGENT_CDN_BASE:-https://cdn.example.com/fleetdeck}
